@@ -1,0 +1,143 @@
+/* 공개 사이트 첫 화면 스타일 — 게임과 같은 색·글꼴을 쓴다. 외부 폰트·라이브러리 없음 */
+
+:root {
+  /* 두 게임과 같은 토큰을 쓴다 — 첫 화면에서 게임으로 넘어갈 때 화면이 튀지 않게 */
+  --bg: #14161c;
+  --panel: #1c1f27;
+  --line: #2a2e39;
+  --text: #e8eaf0;
+  --dim: #97a0b5;
+  --accent: #f0b429;
+  /* 게임이 어두운 화면 전용이라 첫 화면도 어둡게 고정한다(밝은 테마를 두면 넘어갈 때 눈이 부신다) */
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 26px 16px 34px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Malgun Gothic", "맑은 고딕", system-ui, -apple-system, sans-serif;
+  line-height: 1.62;
+  /* 한글은 기본값이면 낱글자 단위로 잘린다("사라집 / 니다") */
+  word-break: keep-all;
+  /* 게임과 같은 폭이라 첫 화면에서 게임으로 넘어갈 때 폭이 바뀌지 않는다 */
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+/* ── 머리 ─────────────────────────────── */
+.site-head { margin-bottom: 22px; }
+h1 {
+  margin: 0 0 2px;
+  font-size: 1.7rem; font-weight: 700; letter-spacing: .14em;
+}
+.tagline { margin: 0; color: var(--dim); font-size: .86rem; }
+
+/* ── 게임 목록 ─────────────────────────── */
+.games { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+
+.game {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.game h2 {
+  margin: 0;
+  font-size: 1.24rem; letter-spacing: .06em;
+}
+.axis {
+  margin: 1px 0 8px;
+  font-size: .72rem; color: var(--accent); letter-spacing: .06em;
+}
+.axis strong { font-weight: 700; }
+
+.hook { margin: 0 0 8px; font-size: .86rem; }
+.hook strong { color: var(--text); font-weight: 700; }
+
+.rules { margin: 0 0 12px; padding-left: 17px; }
+.rules li { font-size: .78rem; color: var(--dim); margin-bottom: 2px; }
+
+/* 누르는 것은 크게. 폰에서 엄지로 눌러야 한다 */
+.play {
+  display: block;
+  padding: 13px 16px;
+  background: var(--accent); color: #1a1408;
+  border-radius: 11px;
+  font-size: .95rem; font-weight: 700; text-align: center; text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.play:active { transform: scale(.985); }
+.play:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* ── 미리보기 ───────────────────────────
+   그림 파일 없이 게임의 실제 색·모양·이름으로 만든다.
+   이 트랙의 원칙(아트 의존 없음)이 첫 화면에도 그대로 적용된다. */
+.thumb {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  background: #15171d;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  /* 🔴 폭을 묶어 둔다. 카드 폭을 다 쓰게 두면 폰(375px)에서 미리보기 하나가
+     345px를 차지해 두 번째 게임이 화면 밖으로 밀린다(실측). 미리보기는 아이콘이다. */
+  justify-self: start;
+}
+.thumb-merge { width: 150px; }
+.thumb-belt { width: 100%; max-width: 250px; }
+
+/* 「한칸만더」 — 3×3 갱도. 색과 이름은 games/merge-mine/style.css 기본 테마와 같은 값 */
+.thumb-merge { grid-template-columns: repeat(3, 1fr); }
+.ore {
+  display: grid; place-items: center;
+  aspect-ratio: 1;
+  border-radius: 9px;
+  font-size: .74rem; font-weight: 700;
+  background: var(--tint, #22262f);
+}
+.thumb-merge .o1 { --tint: #016b5d; color: #fff; }
+.thumb-merge .o2 { --tint: #317413; color: #fff; }
+.thumb-merge .o3 { --tint: #ab5506; color: #fff; }
+.thumb-merge .o4 { --tint: #e20377; color: #fff; }
+.thumb-merge .o5 { --tint: #dd65d2; color: #12141a; }
+.ore.empty { background: #191c24; border: 1px dashed var(--line); }
+
+/* 「째깍벨트」 — 벨트 5칸. 칸 비율(.75)과 도형 크기(84%)를 게임과 맞춘다 */
+.thumb-belt { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.thumb-belt .cell {
+  display: grid; place-items: center;
+  aspect-ratio: .75;
+  background: #191c24;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.thumb-belt .cell.empty { background: #15171d; border-style: dashed; }
+.pip { width: 84%; aspect-ratio: 1; background: #2a2e39; }
+/* 색과 clip-path는 games/queue-line/src/kinds.js·style.css와 같은 값 */
+.pip.s-circle { background: #4aa3ff; border-radius: 50%; }
+.pip.s-square { background: #f0b429; border-radius: 4px; }
+.pip.s-tri { background: #5ad46a; clip-path: polygon(50% 2%, 100% 100%, 0 100%); }
+
+/* ── 꼬리 ─────────────────────────────── */
+.site-foot {
+  margin-top: 24px;
+  font-size: .74rem; color: var(--dim);
+}
+.site-foot p { margin: 0; }
+.site-foot strong { color: var(--text); font-weight: 600; }
+
+/* 화면이 넓으면 미리보기를 왼쪽에 두고 두 단으로 눕힌다.
+   폰(세로)에서는 위아래로 쌓인 채 그대로다. */
+@media (min-width: 480px) {
+  .game { grid-template-columns: auto 1fr; align-items: start; }
+  .thumb { align-self: start; }
+  .thumb-merge { width: 168px; }
+  .thumb-belt { width: 200px; max-width: none; }
+}
