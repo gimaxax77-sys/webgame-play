@@ -1,0 +1,1864 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>한칸만더 — 합성 퍼즐</title>
+<meta name="description" content="인접한 같은 광석을 눌러 합치고, 모은 광석으로 갱도를 키우는 합성 퍼즐 게임입니다.">
+<style>
+/* 「한칸만더」 화면 스타일 — 모바일 세로 화면 우선, 외부 폰트·라이브러리 없음 */
+
+:root {
+  --bg: #14161c;
+  --panel: #1c1f27;
+  --line: #2a2e39;
+  --text: #e8eaf0;
+  --dim: #97a0b5;
+  --accent: #f0b429;
+  --gap: 6px;
+}
+
+* { box-sizing: border-box; }
+
+/* 터치 반응 — 브라우저가 더블탭 확대를 기다리느라 탭을 늦추는 일이 없게 한다.
+   뷰포트가 반응형이라 최신 브라우저는 대개 알아서 없애지만, 명시해 두는 편이 확실하다. */
+button, summary { touch-action: manipulation; }
+
+/* hidden 속성이 항상 이기게 한다.
+   .over 처럼 display 를 지정한 요소는 브라우저 기본 [hidden]{display:none} 을 눌러 버려
+   hidden=true 로 만들어도 화면에서 안 사라진다(2026-07-28 실제로 겪음). */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding: 8px 12px 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Malgun Gothic", "맑은 고딕", system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  /* 한글은 기본값이면 낱글자 단위로 잘린다("사라집 / 니다"). 띄어쓰기에서만 줄을 바꾼다. */
+  word-break: keep-all;
+  max-width: 560px;
+  margin-inline: auto;
+  /* 화면(또는 액자)이 내용보다 크면 아래가 통째로 비어 보인다(2026-07-29 Gim 지적).
+     남는 높이를 섹션 사이에 나눠 주어 여백이 아래에 몰리지 않게 한다. */
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* 최상단 한 줄 — [갱도 크기] 한칸만더 [판 새로].
+   버튼을 따로 한 줄 두면 세로를 43px 더 먹는다. 제목 줄에 얹어 그만큼 보드에 돌려준다. */
+header.topbar {
+  /* 좌우 칸을 1fr로 같게 잡아야 제목이 화면 정중앙에 온다.
+     space-between으로 두면 버튼 폭이 서로 달라(95px vs 56px) 제목이 한쪽으로 밀린다. */
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 8px; margin-bottom: 3px;
+}
+/* 양쪽에 버튼이 두 개씩 온다 */
+header.topbar .topleft { display: flex; gap: 6px; justify-self: start; }
+header.topbar .topright { display: flex; gap: 6px; justify-self: end; }
+
+/* 되돌릴 수 없는 버튼은 색으로 구분한다.
+   "판 새로"와 "처음부터"는 이름만으로는 어디까지 지워지는지 안 보인다(2026-07-29 Gim 지적). */
+.topbtn.danger { color: #e08a8a; border-color: #6b3a3a; }
+.topbtn.danger:hover { color: #ff9a9a; border-color: #e05a5a; }
+h1 { margin: 0; font-size: 1.15rem; letter-spacing: .12em; white-space: nowrap; }
+.sub { margin: 0 0 6px; color: var(--dim); font-size: .72rem; text-align: center; }
+
+h2 { font-size: .8rem; margin: 0 0 5px; color: var(--dim); font-weight: 600; }
+
+/* 현황 */
+.stats {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 7px 11px;
+  margin-bottom: 8px;
+}
+.ore-box { display: flex; align-items: baseline; gap: 6px; }
+.ore-num { font-size: 1.35rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ore-unit { color: var(--dim); font-size: .9rem; }
+.meta {
+  display: flex; flex-wrap: wrap; gap: 2px 10px;
+  margin-top: 3px; color: var(--dim); font-size: .72rem;
+}
+#streak { color: var(--accent); font-weight: 700; }
+
+/* 보드 — 한 화면에 창고·제련소까지 담아야 하므로 화면 높이에 따라 같이 줄어든다.
+   폰마다 세로가 제각각이라 고정 px로 두면 어떤 기기에서는 반드시 넘친다. */
+.board-wrap {
+  position: relative;
+  /* width:100%가 반드시 있어야 한다. body가 flex라서 margin:auto 가 stretch를 꺼 버리고,
+     그러면 minmax(0,1fr) 격자가 최소 너비로 접힌다(2026-07-29 실제로 겪음). */
+  width: 100%;
+  flex: none;
+  /* 아래 채굴 버튼과 20px 벌린다. 8px일 때 버튼을 누르려다 맨 아랫줄 칸이 눌렸다(2026-07-29 Gim).
+     보드 높이는 아래 계산에 묶여 있으므로 이 값을 키우면 그만큼 보드가 줄어 총 높이는 그대로다. */
+  margin: 0 auto 20px;
+  /* 보드를 뺀 나머지가 실측 503px이다(2026-07-29).
+     ⚠ 재는 법 — body의 min-height와 main의 justify-content를 잠시 끄고 재야 한다.
+        space-between이 마지막 요소를 바닥에 붙여서, 그냥 재면 늘 "화면−보드"가 나온다.
+     ⚠ 위아래에 무엇을 더하거나 빼면 이 503도 반드시 다시 재서 고쳐야 한다.
+        바로 위 margin-bottom 도 여기에 포함된다. */
+  max-width: min(100%, max(180px, calc(100vh - 503px)));
+  max-width: min(100%, max(180px, calc(100dvh - 503px)));
+}
+/* 액자(아티팩트) 안에서도 화면 높이에 맞춘다. 틀이 "내용보다 크되 최소한 보이는 영역만큼"
+   잡히므로 100dvh가 순환하지 않고 그 영역으로 수렴한다(Gim의 첫 스크린샷에서 내용 아래가
+   비어 있던 것이 근거 — 틀이 내용보다 컸다는 뜻).
+   다만 틀이 내용에 딱 맞게 줄어드는 구현이라면 순환해서 바닥까지 쪼그라들 수 있으므로,
+   일반 화면(180px)보다 높은 240px을 바닥값으로 두어 그 경우에도 쓸 만한 크기를 지킨다. */
+:root.framed .board-wrap { max-width: min(100%, max(240px, calc(100dvh - 503px))); }
+.board {
+  display: grid;
+  /* minmax(0,1fr) 이어야 한다. 그냥 1fr 이면 최소 내용 너비(칸 안의 "구리" 글자) 아래로
+     못 줄어들어 칸이 커진 채 보드 밖으로 삐져나간다. 6열이 되면서 실제로 겪음(2026-07-29). */
+  grid-template-columns: repeat(var(--size, 6), minmax(0, 1fr));
+  gap: var(--gap);
+}
+.cell {
+  position: relative;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  /* 등급 색은 --tint 하나로 받는다. 배경뿐 아니라 발광(box-shadow)도 같은 값을 쓰므로
+     색을 바꿀 곳이 한 군데로 모인다. */
+  background-color: var(--tint, #191c23);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 2px;
+  padding: 2px;
+  overflow: hidden;
+  transition: transform .08s ease, box-shadow .12s ease;
+  -webkit-tap-highlight-color: transparent;
+  /* 끌어서 합치기 때문에 none 이어야 한다. manipulation 이면 브라우저가 세로 끌기를
+     스크롤로 가로채 드래그가 중간에 끊긴다. */
+  touch-action: none;
+}
+/* 빈칸 — 1등급과 확실히 벌리려고 예전(#16181e)보다 어둡게 했다. 점선 테두리는 유지. */
+.cell.empty { background-color: #101218; border-style: dashed; cursor: default; }
+
+/* 글자는 무늬·광택 위에 오게 한다 */
+.cell .lv, .cell .nm { position: relative; z-index: 2; }
+/* 글자 크기를 칸 수에 맞춰 줄인다. 보드가 6×6에서 9×9까지 커지므로 고정 크기면 넘친다. */
+.cell .lv { font-size: clamp(.8rem, calc(26vw / var(--size, 6)), 1.4rem); font-weight: 700; line-height: 1; }
+.cell .nm { font-size: clamp(.5rem, calc(13vw / var(--size, 6)), .72rem); opacity: .82; }
+/* 선택 표시는 outline 으로 낸다. box-shadow 를 쓰면 아래의 발광과 같은 속성을 다투어
+   고른 칸만 빛이 꺼져 버린다. outline 도 border-radius 를 따라가므로 모양은 같다. */
+.cell.sel { transform: scale(.94); outline: 3px solid var(--accent); outline-offset: -3px; }
+
+/* ── 두 번째 축: 등급대별 무늬 ──
+   색 하나로는 10단계를 못 나른다(사람이 안정적으로 구분하는 밝기 단계는 6~8개).
+   🔴 2026-07-30 — 경계를 2단계 내렸다(예전 4/8 → 지금 2/6). 판정은 ui.js의 band 계산에 있다.
+   1~2 민무늬 · 3~6 사선 · 7~10 격자. currentColor를 쓰므로 밝은 타일에는 어두운 무늬,
+   어두운 타일에는 밝은 무늬가 자동으로 생긴다. */
+.cell::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.cell.band2::before {
+  background: repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 9px);
+  opacity: .16;
+}
+.cell.band3::before {
+  background:
+    repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 7px),
+    repeating-linear-gradient(-45deg, currentColor 0 2px, transparent 2px 7px);
+  opacity: .18;
+}
+
+/* ── 질감: 광물 광택. 등급대가 높을수록 강하게 ── */
+.cell:not(.empty)::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    radial-gradient(120% 85% at 28% 12%, rgba(255,255,255,.20), transparent 62%),
+    linear-gradient(180deg, transparent 55%, rgba(0,0,0,.16));
+}
+.cell.band2:not(.empty)::after {
+  background:
+    radial-gradient(120% 85% at 28% 12%, rgba(255,255,255,.26), transparent 60%),
+    linear-gradient(180deg, transparent 50%, rgba(0,0,0,.20));
+}
+/* 최상위 등급만 결정 면(facet)을 넣어 "귀한 광석" 느낌을 준다 */
+.cell.band3:not(.empty)::after {
+  background:
+    conic-gradient(from 210deg at 50% 40%, rgba(255,255,255,.30), transparent 25%, rgba(255,255,255,.18) 50%, transparent 72%, rgba(255,255,255,.26)),
+    radial-gradient(120% 85% at 28% 12%, rgba(255,255,255,.26), transparent 60%);
+}
+
+/* ── 모서리도 등급대를 나른다 (색약이어도 형태로 구분된다) ── */
+.cell.band1 { border-radius: 8px; }
+.cell.band2 { border-radius: 16px; }
+.cell.band3 { border-radius: 50%; }
+
+/* ── 발광: 등급대가 오를수록 칸이 스스로 빛난다 ──
+   자기 색(--tint)으로 번지므로 색조가 어긋나지 않는다.
+   칸 사이 간격이 6px 이라 최상위(band3)의 8px 번짐만 옆 칸에 살짝 닿는데,
+   가장자리로 갈수록 옅어지는 그라데이션이라 경계가 뭉개지지 않는다. */
+.cell:not(.empty)       { box-shadow: 0 0 5px -1px var(--tint); }
+.cell.band2:not(.empty) { box-shadow: 0 0 10px -1px var(--tint), 0 0 3px var(--tint); }
+.cell.band3:not(.empty) { box-shadow: 0 0 18px -1px var(--tint), 0 0 7px var(--tint); }
+
+/* ── 합성·채굴 순간 연출 ──
+   보드 전체가 매 탭마다 다시 그려지므로, 방금 바뀐 칸에만 클래스를 붙여 재생한다. */
+@keyframes 팝 { 0% { transform: scale(.72); } 55% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes 등장 { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.cell.pop { animation: 팝 .22s cubic-bezier(.2, .9, .3, 1.2); }
+.cell.in { animation: 등장 .18s ease-out; }
+
+/* 누를 때는 즉시 반응하고, 뗄 때만 부드럽게 돌아온다.
+   전환에 0.08초를 두면 눌린 표시가 80ms 뒤에 완성되어 "굼뜨다"고 느껴진다(2026-07-29 실측). */
+.cell:active { transform: scale(.94); transition-duration: 0s; }
+/* 빈칸도 눌린 느낌은 준다. 아무 반응이 없으면 "터치가 안 먹었다"고 느낀다. */
+.cell.empty:active { transform: scale(.97); }
+
+/* ── 팔레트 「광물」 — 밝기는 1→10등급까지 계속 오르고, 색은 색상환을 두 바퀴 돈다 ──
+   계산으로 설계·검증했다(tools/palette-jewel.mjs · research.md 2026-07-29 "타일 채도" 절).
+   평균 채도 53.3(예전 31.4) · 인접 등급 ΔE 최소 28 · 글자 명암비 최소 4.65 · 빈칸과 전부 ΔE 25 이상.
+
+   🔴 2026-07-30 — 등급을 12 → 10단계로 줄이면서 **모든 팔레트를 2단계씩 내렸다**(Gim 지시).
+   새 lvN 은 예전 lv(N+2) 의 색이다. 즉 가장 어두웠던 두 색을 버리고 화려한 위쪽을 앞으로 당겼다.
+   100만회 시뮬레이션에서 도달 최고 등급이 8이라 9~12등급 외형이 아무에게도 보이지 않았기 때문이다.
+   **네 가지 검사는 이동만으로 그대로 유지된다** — 연속 부분 수열이라 밝기 단조·인접 ΔE가 보존되고,
+   글자색이 색마다 짝지어져 있어 명암비도 그대로이며, 가장 어두운 두 색이 빠져 빈칸과의 구별은 개선된다.
+
+   ⚠ 두 가지 함정이 있다(예전 등급 기준으로 적힌 것이라 새 번호로 옮겨 둔다).
+   ① 밝기 L* 51~59 구간은 흰 글자도 검은 글자도 명암비 4.5를 못 넘긴다. 그래서 4→5등급에서 건너뛴다.
+   ② 색상을 매끄럽게(등급당 27°씩) 훑으면 예쁘지만 이웃 등급이 ΔE 14까지 붙어 못 쓴다.
+      60°씩 크게 뛰며 두 바퀴 도는 지금 방식이라야 "무지개"와 "구분됨"을 같이 만족한다. */
+.cell.lv1  { --tint: #016b5d; color: #ffffff; }
+.cell.lv2  { --tint: #317413; color: #ffffff; }
+.cell.lv3  { --tint: #ab5506; color: #ffffff; }
+.cell.lv4  { --tint: #e20377; color: #ffffff; }
+.cell.lv5  { --tint: #dd65d2; color: #12141a; }
+.cell.lv6  { --tint: #1ba1ff; color: #12141a; }
+.cell.lv7  { --tint: #06b4c3; color: #12141a; }
+.cell.lv8  { --tint: #59bf7a; color: #12141a; }
+.cell.lv9  { --tint: #d1b043; color: #12141a; }
+.cell.lv10 { --tint: #ffa79e; color: #12141a; }
+
+/* ── 테마들 — 밝기 사다리와 채도는 그대로 두고 색상만 통째로 돌렸다.
+   여섯 모두 같은 검사를 통과했다(밝기 단조 증가 · 인접 ΔE 25 이상 · 명암비 4.5 이상 · 빈칸과 ΔE 25 이상).
+   테마도 무지개를 한 바퀴 도므로 이름이 색 하나를 가리키지는 않는다. 다만 판에는 저등급 칸이
+   훨씬 많으므로 1~3등급 색이 이름과 맞도록 각도를 골랐다.
+   ⚠ 테마를 더할 때는 theme.js의 THEMES와 여기 10줄을 함께 넣어야 한다.
+   ⚠ 아무 각도나 되지는 않는다. 60°·225°·240° 등은 인접 ΔE가 25 아래로 떨어진다.
+      palette-jewel.mjs의 "색상 이동 각도 전수 검사"가 통과하는 각도만 알려 준다. ── */
+
+/* 노을 — 색상 +30° · 평균 채도 52.9 · 인접 ΔE 최소 29.2 */
+:root[data-theme="ember"] .cell.lv1  { --tint: #016972; color: #ffffff; }
+:root[data-theme="ember"] .cell.lv2  { --tint: #007450; color: #ffffff; }
+:root[data-theme="ember"] .cell.lv3  { --tint: #826b00; color: #ffffff; }
+:root[data-theme="ember"] .cell.lv4  { --tint: #df2937; color: #ffffff; }
+:root[data-theme="ember"] .cell.lv5  { --tint: #fe5296; color: #12141a; }
+:root[data-theme="ember"] .cell.lv6  { --tint: #9a8cff; color: #12141a; }
+:root[data-theme="ember"] .cell.lv7  { --tint: #01b0e1; color: #12141a; }
+:root[data-theme="ember"] .cell.lv8  { --tint: #0cc0aa; color: #12141a; }
+:root[data-theme="ember"] .cell.lv9  { --tint: #9bc052; color: #12141a; }
+:root[data-theme="ember"] .cell.lv10 { --tint: #ffab6f; color: #12141a; }
+
+/* 단풍 — 색상 +105° · 평균 채도 55.1 · 인접 ΔE 최소 36.9 */
+:root[data-theme="autumn"] .cell.lv1  { --tint: #045cbb; color: #ffffff; }
+:root[data-theme="autumn"] .cell.lv2  { --tint: #046e8c; color: #ffffff; }
+:root[data-theme="autumn"] .cell.lv3  { --tint: #017c5b; color: #ffffff; }
+:root[data-theme="autumn"] .cell.lv4  { --tint: #757a00; color: #ffffff; }
+:root[data-theme="autumn"] .cell.lv5  { --tint: #c98500; color: #12141a; }
+:root[data-theme="autumn"] .cell.lv6  { --tint: #ff6882; color: #12141a; }
+:root[data-theme="autumn"] .cell.lv7  { --tint: #c68cea; color: #12141a; }
+:root[data-theme="autumn"] .cell.lv8  { --tint: #13b6ff; color: #12141a; }
+:root[data-theme="autumn"] .cell.lv9  { --tint: #0ec7c6; color: #12141a; }
+:root[data-theme="autumn"] .cell.lv10 { --tint: #74d45a; color: #12141a; }
+
+/* 이끼 — 색상 +180° · 평균 채도 50.4 · 인접 ΔE 최소 32.6 */
+:root[data-theme="moss"] .cell.lv1  { --tint: #b12060; color: #ffffff; }
+:root[data-theme="moss"] .cell.lv2  { --tint: #7f4fae; color: #ffffff; }
+:root[data-theme="moss"] .cell.lv3  { --tint: #057698; color: #ffffff; }
+:root[data-theme="moss"] .cell.lv4  { --tint: #058373; color: #ffffff; }
+:root[data-theme="moss"] .cell.lv5  { --tint: #06a958; color: #12141a; }
+:root[data-theme="moss"] .cell.lv6  { --tint: #b99802; color: #12141a; }
+:root[data-theme="moss"] .cell.lv7  { --tint: #fc7d74; color: #12141a; }
+:root[data-theme="moss"] .cell.lv8  { --tint: #e58ddb; color: #12141a; }
+:root[data-theme="moss"] .cell.lv9  { --tint: #7ab7ff; color: #12141a; }
+:root[data-theme="moss"] .cell.lv10 { --tint: #07d2e3; color: #12141a; }
+
+/* 심해 — 색상 +285° · 평균 채도 47.7 · 인접 ΔE 최소 30.3 */
+:root[data-theme="deep"] .cell.lv1  { --tint: #5f6201; color: #ffffff; }
+:root[data-theme="deep"] .cell.lv2  { --tint: #a24e0e; color: #ffffff; }
+:root[data-theme="deep"] .cell.lv3  { --tint: #bc3889; color: #ffffff; }
+:root[data-theme="deep"] .cell.lv4  { --tint: #0472e4; color: #ffffff; }
+:root[data-theme="deep"] .cell.lv5  { --tint: #019ddd; color: #12141a; }
+:root[data-theme="deep"] .cell.lv6  { --tint: #05adab; color: #12141a; }
+:root[data-theme="deep"] .cell.lv7  { --tint: #6fb45a; color: #12141a; }
+:root[data-theme="deep"] .cell.lv8  { --tint: #dba04e; color: #12141a; }
+:root[data-theme="deep"] .cell.lv9  { --tint: #ff94a1; color: #12141a; }
+:root[data-theme="deep"] .cell.lv10 { --tint: #e0a9ff; color: #12141a; }
+
+/* 성운 — 색상 +330° · 평균 채도 49.6 · 인접 ΔE 최소 31.8 */
+:root[data-theme="nebula"] .cell.lv1  { --tint: #026d36; color: #ffffff; }
+:root[data-theme="nebula"] .cell.lv2  { --tint: #6a6900; color: #ffffff; }
+:root[data-theme="nebula"] .cell.lv3  { --tint: #c43c3c; color: #ffffff; }
+:root[data-theme="nebula"] .cell.lv4  { --tint: #c138b8; color: #ffffff; }
+:root[data-theme="nebula"] .cell.lv5  { --tint: #8f83ff; color: #12141a; }
+:root[data-theme="nebula"] .cell.lv6  { --tint: #02a8d6; color: #12141a; }
+:root[data-theme="nebula"] .cell.lv7  { --tint: #09b7a2; color: #12141a; }
+:root[data-theme="nebula"] .cell.lv8  { --tint: #97b656; color: #12141a; }
+:root[data-theme="nebula"] .cell.lv9  { --tint: #fb9d57; color: #12141a; }
+:root[data-theme="nebula"] .cell.lv10 { --tint: #ffa4bf; color: #12141a; }
+
+/* 라운드 종료 */
+.over {
+  position: absolute; inset: 0;
+  background: rgba(20, 22, 28, .93);
+  border-radius: 12px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; padding: 20px; text-align: center;
+}
+.over p { margin: 0; font-size: .95rem; }
+
+/* 갱도 크기 고르기 — 보드 안에 넣으면 내용이 보드보다 커서 위아래로 삐져나온다.
+   화면 전체를 덮는 모달로 띄운다. */
+.over.pick {
+  position: fixed; inset: 0; z-index: 50;
+  border-radius: 0;
+  background: rgba(20, 22, 28, .97);
+  gap: 12px; padding: 24px 20px;
+}
+.pick-title { font-size: 1.05rem; font-weight: 700; }
+.pick-note { font-size: .72rem; color: var(--dim); line-height: 1.45; max-width: 300px; }
+.pick-note strong { color: var(--text); }
+.mode-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 300px; }
+/* 확인 팝업 — 취소를 왼쪽에 두어 실수로 확인을 누르지 않게 한다 */
+.ask-btns { display: flex; gap: 10px; margin-top: 4px; }
+.mode-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 6px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: #191c23; color: var(--text);
+  font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mode-opt:hover { border-color: var(--accent); }
+.mode-opt:active { transform: scale(.98); }
+.mode-opt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mode-size { font-size: 1rem; font-weight: 700; color: var(--accent); }
+.mode-name { font-size: .76rem; }
+.mode-desc { font-size: .64rem; color: var(--dim); }
+
+/* 최상단 버튼 — 제목 양옆 */
+.topbtn {
+  position: relative;
+  flex: none;
+  background: none; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--dim); font: inherit; font-size: .78rem;
+  padding: 8px 6px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.topbtn:hover { border-color: var(--accent); color: var(--accent); }
+.topbtn:active { transform: scale(.98); }
+/* 닿는 범위만 위아래로 넓힌다(좌우는 옆 버튼과 겹치면 안 되므로 그대로). 실측 33px → 45px. */
+.topbtn::after { content: ""; position: absolute; inset: -6px 0; }
+
+button.primary {
+  background: var(--accent); color: #1a1405;
+  border: 0; border-radius: 10px;
+  padding: 12px 26px; font: inherit; font-weight: 700;
+  cursor: pointer;
+}
+
+/* 공유 버튼 — 주 동작은 "다시 캐기"라 이쪽은 한 단계 눌러 둔다 */
+.share {
+  background: none; border: 1px solid var(--line); border-radius: 10px;
+  color: var(--text); font: inherit; font-size: .85rem;
+  padding: 9px 20px; cursor: pointer;
+}
+
+/* 채굴 버튼 — 이 게임의 유일한 진행 동작이라 가장 크게 둔다 */
+.mine {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 11px;
+  border: 0; border-radius: 12px;
+  background: linear-gradient(140deg, #f0b429, #e08a1e);
+  color: #1a1405;
+  font: inherit; font-size: .98rem; font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mine span { font-weight: 500; font-size: .82rem; opacity: .75; margin-left: 6px; }
+.mine:not(:disabled):active { transform: scale(.98); }
+.mine:disabled { background: #262a34; color: var(--dim); cursor: default; }
+
+/* 창고·제련소 패널 */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 9px;
+  margin-bottom: 8px;
+}
+/* 아이콘 타일 — 한 줄에 늘어놓아 세로를 아낀다.
+   이름과 설명은 글자로 두면 화면을 다 잡아먹어서 title/aria-label로 옮겼다. */
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tiles.items { grid-template-columns: repeat(3, 1fr); }
+
+.tile {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px;
+  width: 100%; padding: 4px 3px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: #191c23; color: var(--text);
+  font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tile .ico { font-size: 1.15rem; line-height: 1.1; }
+.tile .val {
+  font-size: .66rem; font-weight: 700; color: var(--accent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.tile .cost {
+  font-size: .7rem; font-weight: 600; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.tile:not(:disabled):hover { border-color: var(--accent); }
+.tile:not(:disabled):active { transform: scale(.96); }
+.tile:disabled { opacity: .45; cursor: default; }
+
+/* 아이템 타일 — 위(아이콘)를 누르면 쓰고, 아래(가격)를 누르면 산다 */
+.tile-wrap { display: flex; flex-direction: column; gap: 3px; }
+.tile-wrap .tile { flex: 1; }
+.tile-wrap.picking .tile {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.cost-btn {
+  padding: 4px 2px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: #262a34; color: var(--dim);
+  font: inherit; font-size: .7rem; font-weight: 600;
+  cursor: pointer; font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+}
+.cost-btn:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+.cost-btn:disabled { opacity: .4; cursor: default; }
+
+/* 손가락이 닿는 면적만 넓힌다(보이는 크기는 그대로).
+   세로가 빠듯해 버튼 높이를 실제로 키우면 그만큼 보드 칸이 작아지는 제로섬이라,
+   눌리는 범위만 44px 이상으로 늘렸다. 실측 27px → 45px. */
+.cost-btn { position: relative; }
+/* 위로는 아이콘 버튼과의 간격(3px)까지만 넓힌다 — 더 넓히면 아이콘의 탭을 뺏는다. */
+.cost-btn::after { content: ""; position: absolute; inset: -3px 0 -18px; }
+
+.hint { color: var(--dim); font-size: .72rem; font-weight: 400; margin-left: 6px; }
+
+/* 대상을 고르는 중 — 어느 칸을 눌러야 하는지 보이게 한다 */
+.board.picking .cell:not(.empty) { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* 규칙 — 접어 두어 첫 화면 자리를 비운다 */
+.howto { color: var(--dim); font-size: .8rem; }
+.howto summary {
+  cursor: pointer; font-size: .8rem; color: var(--dim);
+  padding: 4px 0; list-style-position: inside;
+}
+.howto ul { margin: 8px 0 0; padding-left: 18px; }
+.howto li { margin-bottom: 5px; }
+.howto strong { color: var(--text); }
+
+/* 알림 */
+.toast {
+  position: fixed; left: 50%; bottom: 20px;
+  transform: translate(-50%, 12px);
+  background: #262a34; border: 1px solid var(--line);
+  border-radius: 999px; padding: 10px 18px;
+  font-size: .85rem;
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 아이콘 설명표 — 폰에는 마우스 오버가 없어 title을 못 본다 */
+.legend { margin-top: 12px; }
+.legend-title { font-size: .76rem; color: var(--accent); font-weight: 700; margin: 8px 0 3px; }
+.legend-row { display: flex; align-items: baseline; gap: 6px; font-size: .74rem; margin-bottom: 2px; }
+.legend-ico { flex: none; width: 1.2em; text-align: center; }
+.legend-row b { color: var(--text); font-weight: 600; flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topleft">
+    <button type="button" id="mode-btn" class="topbtn">갱도</button>
+    <button type="button" id="theme-btn" class="topbtn">테마</button>
+  </div>
+  <h1>한칸만더</h1>
+  <div class="topright">
+    <button type="button" id="restart" class="topbtn">판 새로</button>
+    <button type="button" id="reset" class="topbtn danger">처음부터</button>
+  </div>
+</header>
+<p class="sub">붙어 있는 같은 광석 둘을 눌러 합치십시오</p>
+
+<main>
+  <section class="stats" aria-label="현황">
+    <div class="ore-box">
+      <span class="ore-num" id="ore">0</span>
+      <span class="ore-unit">광석</span>
+    </div>
+    <div class="meta">
+      <span id="auto">자동 채굴 없음</span>
+      <span id="top">이번 판 최고 0등급</span>
+      <span id="best">최고 0등급</span>
+      <span id="rounds">0회차</span>
+      <span id="streak" hidden></span>
+    </div>
+  </section>
+
+  <section class="board-wrap">
+    <!-- "광맥"은 이제 게임 이름이 아니라 세계관 용어다(갱도·광석·제련소와 한 묶음). -->
+    <div id="board" class="board" aria-label="광맥 보드"></div>
+    <div id="mode-pick" class="over pick" hidden>
+      <p class="pick-title">갱도 크기를 고르십시오</p>
+      <div id="mode-list" class="mode-list"></div>
+      <p class="pick-note">언제든 바꿀 수 있습니다. 어느 쪽을 골라도 <strong>버는 속도는 같습니다.</strong></p>
+    </div>
+    <div id="theme-pick" class="over pick" hidden>
+      <p class="pick-title">색 테마를 고르십시오</p>
+      <div id="themes" class="mode-list"></div>
+      <p class="pick-note">타일 색만 바뀝니다. <strong>규칙과 진행에는 영향이 없습니다.</strong></p>
+    </div>
+    <div id="ask" class="over pick" hidden>
+      <p class="pick-title" id="ask-title"></p>
+      <p class="pick-note" id="ask-body"></p>
+      <div class="ask-btns">
+        <button type="button" id="ask-cancel" class="share">취소</button>
+        <button type="button" id="ask-ok" class="primary">확인</button>
+      </div>
+    </div>
+    <div id="over" class="over" hidden>
+      <p id="over-text"></p>
+      <button type="button" id="again" class="primary">다시 캐기</button>
+      <button type="button" id="share" class="share">결과 복사</button>
+    </div>
+  </section>
+
+  <button type="button" id="mine" class="mine">
+    ⛏ 채굴하기 <span id="mine-left"></span>
+  </button>
+
+  <section class="panel">
+    <h2>창고 <span class="hint" id="item-hint">아이콘을 누르면 씁니다</span></h2>
+    <div id="items" class="tiles items"></div>
+  </section>
+
+  <section class="panel">
+    <h2>제련소</h2>
+    <div id="upgrades" class="tiles"></div>
+  </section>
+
+  <details class="howto">
+    <summary>규칙 보기</summary>
+    <ul>
+      <li>상하좌우로 <strong>붙어 있는</strong> 같은 등급 광석 둘을 차례로 누르면 한 등급 위로 합쳐집니다. <strong>끌어서 옆 칸에 놓아도</strong> 됩니다.</li>
+      <li>합칠 때마다 광석을 얻지만 <strong>개수는 늘지 않습니다.</strong> 진행하려면 <strong>채굴하기</strong>로 새 광석을 캐야 합니다.</li>
+      <li>많이 캘수록 유리하지만, 빈칸이 없어지고 합칠 곳도 사라지면 그 판이 끝납니다. 어디까지 채울지가 이 게임의 판단입니다.</li>
+      <li>판이 끝나면 제련소에서 성장한 뒤 다시 도전하십시오.</li>
+      <li><strong>창고</strong>에서 아이템을 사 두면 판 안에서 쓸 수 있습니다. 특히 <strong>정제</strong>는 합성만으로는 닿지 않는 높은 등급을 여는 열쇠입니다.</li>
+      <li>진행 상황은 이 브라우저에 저장됩니다.</li>
+    </ul>
+    <div id="legend" class="legend"></div>
+  </details>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module">
+// 갱도 모드 — 기본 보드 크기를 고르는 기능. 첫 접속 때 고르고 나중에도 바꿀 수 있다.
+// 크기별 유불리는 board.js의 roundBonus가 칸 수에 비례하도록 맞춰 없앴다(편차 78% → 10%).
+
+const MODES = [
+  { size: 4, name: "좁은 갱도", desc: "한 판 약 1분 · 3등급에서 자주 끊깁니다" },
+  { size: 5, name: "보통 갱도", desc: "한 판 약 1분 40초" },
+  { size: 6, name: "넓은 갱도", desc: "한 판 약 2분 30초 · 대체로 4등급까지 갑니다" },
+];
+
+const DEFAULT_MODE = 6;
+
+function isValidMode(size) {
+  return MODES.some((m) => m.size === size);
+}
+
+// 저장본이 깨졌거나 아직 고르지 않았어도 게임은 돌아야 하므로 기본값으로 떨어진다
+function modeOf(state) {
+  return state && isValidMode(state.mode) ? state.mode : DEFAULT_MODE;
+}
+
+// 아직 고른 적이 없는가 (첫 접속 판정)
+function needsPick(state) {
+  return !state || !isValidMode(state.mode);
+}
+
+function setMode(state, size) {
+  if (!isValidMode(size)) return false;
+  state.mode = size;
+  return true;
+}
+
+// 화면 테마 — 타일 색 세트만 바꾼다. 배치·규칙은 건드리지 않는다.
+// 두 팔레트 모두 같은 기준을 통과했다(밝기 단조 증가 · 인접 ΔE 25 이상 · 명암비 4.5 이상 · 빈칸과 구별).
+// 근거와 생성 방법은 research.md 2026-07-29 "타일 디자인" 절 참조.
+
+// 여섯 팔레트 모두 같은 검사를 통과했다 — 밝기 사다리는 공유하고 색상만 돌린 것이다.
+// 🔴 테마를 추가하면 style.css에 lv1~lv10 규칙 10줄도 함께 넣어야 한다(test/theme.test.mjs가 확인한다).
+const THEMES = [
+  { id: "mineral", name: "광물", desc: "어둠에서 빛으로" },
+  { id: "deep", name: "심해", desc: "차가운 물빛" },
+  { id: "ember", name: "노을", desc: "타오르는 붉은빛" },
+  { id: "autumn", name: "단풍", desc: "흙과 단풍" },
+  { id: "moss", name: "이끼", desc: "이끼와 청록" },
+  { id: "nebula", name: "성운", desc: "밤하늘 성운" },
+];
+
+const DEFAULT_THEME = "mineral";
+
+function isValidTheme(id) {
+  return THEMES.some((t) => t.id === id);
+}
+
+// 저장본이 깨져 있어도 화면은 나와야 하므로 기본값으로 떨어진다
+function themeOf(state) {
+  return state && isValidTheme(state.theme) ? state.theme : DEFAULT_THEME;
+}
+
+function setTheme(state, id) {
+  if (!isValidTheme(id)) return false;
+  state.theme = id;
+  return true;
+}
+
+// 영구 업그레이드 정의와 구매 규칙 (육성 요소)
+
+const UPGRADES = [
+  {
+    id: "startLevel",
+    icon: "💎",
+    name: "광맥 순도",
+    desc: "새로 나오는 광석의 등급이 높아집니다",
+    max: 6,
+    cost: (lv) => Math.floor(60 * Math.pow(4.2, lv - 1)),
+    value: (lv) => lv,          // 시작 등급
+    label: (lv) => `최대 ${lv}등급`,
+  },
+  {
+    id: "boardSize",
+    icon: "🔲",
+    name: "갱도 확장",
+    desc: "보드가 넓어져 더 오래 버팁니다",
+    max: 4,                      // 고른 모드에서 +3까지 (4→7 · 5→8 · 6→9)
+    cost: (lv) => Math.floor(200 * Math.pow(6, lv - 1)),
+    value: (lv, s) => modeOf(s) + lv - 1,
+    label: (lv, s) => `${modeOf(s) + lv - 1}×${modeOf(s) + lv - 1}`,
+  },
+  {
+    id: "yield",
+    icon: "🔥",
+    name: "제련 기술",
+    desc: "합성으로 얻는 광석이 늘어납니다",
+    max: 20,
+    cost: (lv) => Math.floor(40 * Math.pow(1.55, lv - 1)),
+    value: (lv) => 1 + (lv - 1) * 0.35,
+    label: (lv) => `×${(1 + (lv - 1) * 0.35).toFixed(2)}`,
+  },
+  {
+    id: "auto",
+    icon: "⚙️",
+    name: "자동 채굴기",
+    desc: "가만히 두어도 광석이 쌓입니다 (접속하지 않은 동안에도)",
+    max: 25,
+    cost: (lv) => Math.floor(120 * Math.pow(1.6, lv - 1)),
+    value: (lv) => (lv - 1) * 0.6,   // 초당 광석
+    label: (lv) => `초당 ${((lv - 1) * 0.6).toFixed(1)}`,
+  },
+];
+
+function byId(id) {
+  return UPGRADES.find((u) => u.id === id);
+}
+
+function levelOf(state, id) {
+  return state.upgrades[id] || 1;
+}
+
+// 보드 크기는 고른 모드에 따라 달라지므로 state를 함께 넘긴다.
+// 나머지 업그레이드의 value는 두 번째 인자를 무시한다.
+function valueOf(state, id) {
+  return byId(id).value(levelOf(state, id), state);
+}
+
+function labelOf(state, id) {
+  return byId(id).label(levelOf(state, id), state);
+}
+
+function costOf(state, id) {
+  const u = byId(id);
+  const lv = levelOf(state, id);
+  return lv >= u.max ? null : u.cost(lv);
+}
+
+function isMaxed(state, id) {
+  return levelOf(state, id) >= byId(id).max;
+}
+
+// 살 수 있으면 사고 true, 아니면 아무것도 바꾸지 않고 false
+function buy(state, id) {
+  const cost = costOf(state, id);
+  if (cost === null || state.ore < cost) return false;
+  state.ore -= cost;
+  state.upgrades[id] = levelOf(state, id) + 1;
+  return true;
+}
+
+// 보드 규칙 — 타일 생성·인접 판정·합성·막힘 판정 (화면을 참조하지 않는 순수 계산)
+
+// rand 는 스트레스 하네스가 씨앗 있는 난수를 끼워 넣기 위한 자리다.
+// 기본값이 Math.random 이라 게임 쪽 호출은 그대로 두면 된다.
+// 이게 없으면 깨진 판을 다시 볼 수 없다(LESSONS 5.6).
+function createBoard(size, startLevel, rand = Math.random) {
+  const cells = new Array(size * size).fill(null);
+  const board = { size, cells };
+  // 시작 시 절반쯤 채워 두면 첫 수가 바로 나온다
+  const seed = Math.max(4, Math.floor(size * size * 0.4));
+  for (let i = 0; i < seed; i++) spawn(board, startLevel, rand);
+  return board;
+}
+
+function idx(board, r, c) {
+  return r * board.size + c;
+}
+
+function emptyCells(board) {
+  const out = [];
+  for (let i = 0; i < board.cells.length; i++) if (board.cells[i] === null) out.push(i);
+  return out;
+}
+
+// 빈 칸 하나에 새 광석을 놓는다. 등급은 1~startLevel 중 낮은 쪽에 치우치게.
+function spawn(board, startLevel, rand = Math.random) {
+  const empty = emptyCells(board);
+  if (empty.length === 0) return false;
+  const at = empty[Math.floor(rand() * empty.length)];
+  const roll = rand();
+  let level = 1;
+  for (let l = 2; l <= startLevel; l++) {
+    if (roll < 1 / Math.pow(2, l - 1)) level = l;
+  }
+  board.cells[at] = level;
+  return true;
+}
+
+function isAdjacent(board, a, b) {
+  const ra = Math.floor(a / board.size), ca = a % board.size;
+  const rb = Math.floor(b / board.size), cb = b % board.size;
+  return Math.abs(ra - rb) + Math.abs(ca - cb) === 1;
+}
+
+// 두 칸을 합칠 수 있는가 — 같은 등급이고 상하좌우로 붙어 있어야 한다
+function canMerge(board, a, b) {
+  if (a === b) return false;
+  const va = board.cells[a], vb = board.cells[b];
+  if (va === null || vb === null) return false;
+  if (va !== vb) return false;
+  return isAdjacent(board, a, b);
+}
+
+// b 자리에 등급+1 광석이 남고 a는 비워진다. 획득 광석량을 돌려준다.
+function merge(board, a, b) {
+  const level = board.cells[a];
+  board.cells[a] = null;
+  board.cells[b] = level + 1;
+  return Math.pow(2, level);
+}
+
+// 합칠 수 있는 쌍이 하나라도 남아 있는가
+function hasAnyMove(board) {
+  const n = board.size;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const i = idx(board, r, c);
+      if (board.cells[i] === null) continue;
+      if (c + 1 < n && board.cells[idx(board, r, c + 1)] === board.cells[i]) return true;
+      if (r + 1 < n && board.cells[idx(board, r + 1, c)] === board.cells[i]) return true;
+    }
+  }
+  return false;
+}
+
+// 빈 칸도 없고 합칠 수도 없으면 라운드 종료
+function isStuck(board) {
+  return emptyCells(board).length === 0 && !hasAnyMove(board);
+}
+
+function highestLevel(board) {
+  let top = 0;
+  for (const v of board.cells) if (v !== null && v > top) top = v;
+  return top;
+}
+
+// 라운드 종료 보너스 — 반드시 칸 수에 비례해야 한다.
+// 예전처럼 25 고정이면 작은 보드가 클릭당 광석에서 78%나 유리해진다.
+// 보너스는 판마다 한 번인데 작은 보드는 판이 짧아 그 한 번이 자주 오기 때문이다(2026-07-29 실측).
+// 2/3 계수는 기존 6×6(36칸 × 2/3 = 24 ≒ 25)과 같은 값이 나오도록 맞춘 것이라 밸런스가 흔들리지 않는다.
+function roundBonus(board, yieldMult) {
+  return Math.floor(highestLevel(board) * board.cells.length * (2 / 3) * yieldMult);
+}
+
+// 게임 상태와 저장·복원 (localStorage). 오프라인 자동 채굴 정산도 여기서 한다.
+
+const KEY = "merge-mine.v1";
+
+function newState() {
+  return {
+    ore: 0,
+    best: 0,           // 최고 등급 기록
+    rounds: 0,
+    mode: null,        // 고른 갱도 크기(4·5·6). null이면 첫 접속이라 고르기 화면이 뜬다
+    theme: null,       // 고른 색 테마. null이면 기본값(광물)
+    upgrades: {},      // id -> 레벨(1부터)
+    items: {},         // id -> 보유 개수 (소모성)
+    streak: 0,         // 연속 접속일 (표시 전용, 보상 없음)
+    bestStreak: 0,
+    lastDay: null,     // 마지막 접속 날짜 "YYYY-MM-DD"
+    lastSeen: Date.now(),
+  };
+}
+
+// 손상되거나 누가 손댄 저장본을 그대로 믿으면 안 된다.
+// ore가 문자열이면 화면에 그대로 "NaN"이 찍히고, 음수면 계산이 무너진다(2026-07-29 테스트로 확인).
+const 수 = (v, 기본) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 기본);
+const 정수 = (v, 기본) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 기본);
+
+// id → 숫자 표만 남긴다. 값이 이상한 항목은 통째로 버려 기본값이 쓰이게 한다.
+function 숫자표(값, 최소) {
+  const out = {};
+  if (값 && typeof 값 === "object" && !Array.isArray(값)) {
+    for (const [k, v] of Object.entries(값)) {
+      if (typeof v === "number" && Number.isFinite(v) && v >= 최소) out[k] = Math.floor(v);
+    }
+  }
+  return out;
+}
+
+// 다른 탭이 저장한 문자열을 받아들일 때도 같은 걸름망을 쓴다.
+const STORAGE_KEY = KEY;
+
+function parseState(raw) {
+  try {
+    if (!raw) return newState();
+    const s = JSON.parse(raw);
+    const base = newState();
+    if (!s || typeof s !== "object" || Array.isArray(s)) return base;
+    // 저장 구조가 늘어나도 옛 저장본이 깨지지 않게 기본값 위에 덮는다
+    return {
+      ...base,
+      ...s,
+      ore: 수(s.ore, base.ore),
+      best: 정수(s.best, base.best),
+      rounds: 정수(s.rounds, base.rounds),
+      streak: 정수(s.streak, base.streak),
+      bestStreak: 정수(s.bestStreak, base.bestStreak),
+      lastSeen: 수(s.lastSeen, base.lastSeen),
+      upgrades: { ...base.upgrades, ...숫자표(s.upgrades, 1) },
+      items: { ...base.items, ...숫자표(s.items, 0) },
+    };
+  } catch {
+    return newState();
+  }
+}
+
+function load() {
+  try {
+    return parseState(localStorage.getItem(KEY));
+  } catch {
+    return newState();   // 읽기 자체가 막힌 경우(사생활 보호 모드 등)
+  }
+}
+
+// 쓸 만한 저장본일 때만 상태를, 아니면 null을 준다.
+// 다른 탭의 알림을 받아들일지 고를 때 쓴다 — 남의 저장본이 깨졌다고 이쪽 진행까지 날리면 안 된다.
+function parseStateOrNull(raw) {
+  try {
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+    return parseState(raw);
+  } catch {
+    return null;
+  }
+}
+
+function save(state) {
+  state.lastSeen = Date.now();
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    // 저장 실패(사생활 보호 모드 등)해도 게임은 계속 돌아야 한다
+  }
+}
+
+function reset() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {}
+}
+
+// 떠나 있던 동안 쌓인 자동 채굴량. 최대 8시간까지만 인정한다.
+function collectOffline(state, perSecond) {
+  if (perSecond <= 0) return 0;
+  const elapsed = Math.max(0, Date.now() - (state.lastSeen || Date.now())) / 1000;
+  const capped = Math.min(elapsed, 8 * 3600);
+  const gained = Math.floor(capped * perSecond);
+  if (gained > 0) state.ore += gained;
+  return gained;
+}
+
+// 연속 접속일(스트릭) 계산 — 기록만 하고 보상은 주지 않는다 (밸런스에 영향 없음)
+
+// 날짜 키 "YYYY-MM-DD". 반드시 로컬 시간 기준이어야 한다.
+// UTC로 잡으면 한국(+09:00)에서 자정과 9시간 어긋나 하루가 엉뚱하게 끊긴다.
+function dayKey(ts = Date.now()) {
+  const d = new Date(ts);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+// 두 날짜 키 사이의 일수. 같은 날 0, 어제→오늘이면 1.
+// 서머타임이 있는 지역에서 ±1시간 밀려도 반올림이 흡수한다.
+function daysBetween(from, to) {
+  const a = Date.parse(`${from}T00:00:00`);
+  const b = Date.parse(`${to}T00:00:00`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
+  return Math.round((b - a) / 86400000);
+}
+
+function bumpBest(state) {
+  if ((state.streak || 0) > (state.bestStreak || 0)) state.bestStreak = state.streak;
+}
+
+// 접속을 기록하고 무슨 일이 있었는지 돌려준다.
+//   "start"  처음 접속
+//   "same"   오늘 이미 접속함 (아무것도 바뀌지 않음)
+//   "extend" 어제에 이어 하루 늘어남
+//   "reset"  하루 이상 비어서 1일로 되돌아감
+function touch(state, ts = Date.now()) {
+  const today = dayKey(ts);
+  const last = state.lastDay;
+
+  if (!last) {
+    state.streak = 1;
+    state.lastDay = today;
+    bumpBest(state);
+    return "start";
+  }
+  if (last === today) return "same";
+
+  const gap = daysBetween(last, today);
+  // 시계가 거꾸로 간 경우(사용자가 시스템 시간을 바꿈)는 벌하지 않고 무시한다.
+  if (Number.isNaN(gap) || gap < 0) return "same";
+
+  state.streak = gap === 1 ? (state.streak || 0) + 1 : 1;
+  state.lastDay = today;
+  bumpBest(state);
+  return gap === 1 ? "extend" : "reset";
+}
+
+// 소모성 아이템 정의와 사용 규칙 (화면을 참조하지 않는 순수 계산)
+// 가격은 플레이테스트로 조정한 값이다. 근거는 research.md 2026-07-29 절.
+
+// 정제로 올릴 수 있는 최고 등급 = 마지막 이름 있는 광석(산호).
+// 상한이 없으면 같은 광석을 무한정 밀어올려 이름도 색도 없는 등급이 나온다(시뮬레이터에서 37등급까지 올라감).
+// 🔴 2026-07-30 — 등급을 12 → 10단계로 줄였다(Gim 지시). ui.js의 ORE_NAMES 길이와 반드시 같아야 한다.
+const MAX_REFINE_LEVEL = 10;
+
+const ITEMS = [
+  {
+    id: "bomb",
+    icon: "💣",
+    name: "폭탄",
+    desc: "고른 칸 하나를 없앱니다",
+    cost: 40,
+    needsTarget: true,
+  },
+  {
+    id: "shuffle",
+    icon: "🔀",
+    name: "셔플",
+    desc: "보드의 광석을 다시 흩뿌립니다",
+    cost: 80,
+    needsTarget: false,
+  },
+  {
+    id: "refine",
+    icon: "✨",
+    name: "정제",
+    desc: `고른 광석을 한 등급 올립니다 (${MAX_REFINE_LEVEL}등급까지)`,
+    cost: 2000,
+    needsTarget: true,
+  },
+];
+
+// 이름을 itemById로 둔 이유 — 빌드가 모든 모듈을 한 스코프로 합치므로
+// upgrades.js의 byId와 같은 이름을 쓰면 그쪽을 덮어써서 제련소가 통째로 깨진다.
+function itemById(id) {
+  return ITEMS.find((i) => i.id === id);
+}
+
+function countOf(state, id) {
+  return state.items[id] || 0;
+}
+
+// 살 수 있으면 사고 true, 아니면 아무것도 바꾸지 않고 false
+function buyItem(state, id) {
+  const it = itemById(id);
+  if (!it || state.ore < it.cost) return false;
+  state.ore -= it.cost;
+  state.items[id] = countOf(state, id) + 1;
+  return true;
+}
+
+// 지금 이 대상에 쓸 수 있는가. 보유 수량까지 함께 본다.
+function canUse(state, board, id, target) {
+  const it = itemById(id);
+  if (!it || countOf(state, id) <= 0) return false;
+  if (!it.needsTarget) return board.cells.some((v) => v !== null);
+  if (!Number.isInteger(target) || target < 0 || target >= board.cells.length) return false;
+  if (board.cells[target] === null) return false;
+  if (id === "refine" && board.cells[target] >= MAX_REFINE_LEVEL) return false;
+  return true;
+}
+
+function shuffleCells(board, rand) {
+  const vals = board.cells.filter((v) => v !== null);
+  const slots = board.cells.map((_, i) => i);
+  // 피셔-예이츠 — 자리만 섞고 광석 구성은 그대로 둔다
+  for (let i = slots.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [slots[i], slots[j]] = [slots[j], slots[i]];
+  }
+  board.cells.fill(null);
+  vals.forEach((v, k) => {
+    board.cells[slots[k]] = v;
+  });
+}
+
+// 아이템을 쓰고 성공 여부를 돌려준다. 실패하면 상태도 보드도 건드리지 않는다.
+// rand 는 셔플용. 스트레스 하네스가 씨앗 있는 난수를 끼워 넣는다(LESSONS 5.6).
+function useItem(state, board, id, target, rand = Math.random) {
+  if (!canUse(state, board, id, target)) return false;
+  if (id === "bomb") board.cells[target] = null;
+  else if (id === "refine") board.cells[target] += 1;
+  else if (id === "shuffle") shuffleCells(board, rand);
+  else return false;
+  state.items[id] = countOf(state, id) - 1;
+  return true;
+}
+
+// 화면 그리기와 입력 처리 — 규칙 계산은 하지 않고 board/upgrades 결과만 표시한다
+
+
+
+
+// 같은 계산을 여기서 또 만들지 않는다 (주석은 import 줄 뒤에 달면 안 된다 — 빌드가 import를 못 지운다)
+
+// 어두운 이름에서 밝은 이름 순으로 배열한다(타일 밝기가 1→10등급까지 계속 오르므로).
+// 이름은 기본 테마「광물」의 실제 타일 색에 맞춘 것이다(1등급 청록 → 10등급 살구).
+// 두 글자로 통일한다 — 9×9에서는 칸이 좁아 세 글자가 잘린다.
+// 다른 테마는 색상환을 통째로 돌리므로 이름과 색이 어긋난다 — 이름은 등급을 부르는 말로만 쓴다.
+//
+// 🔴 2026-07-30 — 12 → 10단계로 줄이며 이름도 색과 함께 2단계 내렸다(Gim 지시).
+// 예전 1·2등급(청금·감청)이 빠지고 예전 3~12등급 이름이 새 1~10등급이 됐다.
+// 색을 옮기면서 이름을 그대로 두면 이름과 색이 어긋난다(2026-07-29에 같은 이유로 이름을 갈았다).
+const ORE_NAMES = ["", "공작", "감람", "호박", "홍옥", "형석", "청옥", "남옥", "비취", "황옥", "산호"];
+
+// 이름·색·효과가 준비된 최고 등급. 합성은 상한이 없으므로 이 위는 숫자로만 표시된다.
+const MAX_NAMED_LEVEL = ORE_NAMES.length - 1;
+
+// 등급대 — 색 말고 두 번째 축(무늬·모서리·발광 세기)을 주기 위한 구분.
+// 사람은 밝기 단계를 6~8개만 안정적으로 구분하는데 이 게임은 10단계다.
+//
+// 🔴 2026-07-30 — 경계를 2단계 내렸다(예전 4/8 → 지금 2/6, Gim 지시).
+// 100만회 시뮬레이션에서 도달 최고 등급이 8이라 예전 경계로는 최상위 band3(가장 센 발광·원형)이
+// 9등급부터여서 아무에게도 보이지 않았다. 지금은 7등급부터라 실제로 닿는다.
+// 화면 코드 안에 박아 두면 눈으로만 확인할 수 있어 밖으로 꺼냈다(test/theme.test.mjs가 고정한다).
+function bandOf(level) {
+  if (level === null || level === undefined) return 0;
+  return level <= 2 ? 1 : level <= 6 ? 2 : 3;
+}
+
+function oreName(level) {
+  return ORE_NAMES[level] || `${level}등급`;
+}
+
+function fmt(n) {
+  n = Math.floor(n);
+  if (n < 10000) return n.toLocaleString();
+  const units = [["억", 1e8], ["만", 1e4]];
+  for (const [u, v] of units) {
+    if (n < v) continue;
+    const x = n / v;
+    const 자리 = x < 10 ? 2 : 1;
+    // 반올림이 아니라 버림이다. 반올림하면 9,999만9,999가 "10000만"이 되어
+    // 있지도 않은 단위가 나온다(1억이라고 써야 할 값). 가진 것보다 많이 보이지도 않는다.
+    const p = 10 ** 자리;
+    return (Math.floor(x * p) / p).toFixed(자리).replace(/\.0+$/, "") + u;
+  }
+  return n.toLocaleString();
+}
+
+// fx = { pop: 합쳐진 칸, in: 새로 캔 칸 } — 그 칸에만 연출 클래스를 붙인다.
+// 매 탭마다 보드 전체를 다시 만들기 때문에, 클래스를 안 가리면 판 전체가 같이 움직여 어지럽다.
+function renderBoard(el, board, selected, onPick, fx) {
+  el.style.setProperty("--size", board.size);
+  el.innerHTML = "";
+  for (let i = 0; i < board.cells.length; i++) {
+    const v = board.cells[i];
+    const cell = document.createElement("button");
+    const band = bandOf(v);   // 경계는 위 bandOf 한 곳에만 둔다
+    cell.className = "cell"
+      + (v === null ? " empty" : ` lv${Math.min(v, MAX_NAMED_LEVEL)} band${band}`)
+      + (selected === i ? " sel" : "")
+      + (fx && fx.pop === i ? " pop" : "")
+      + (fx && fx.in === i ? " in" : "");
+    cell.type = "button";
+    if (v !== null) {
+      cell.innerHTML = `<span class="lv">${v}</span><span class="nm">${oreName(v)}</span>`;
+      cell.setAttribute("aria-label", `${oreName(v)} ${v}등급`);
+      cell.setAttribute("aria-pressed", String(selected === i));   // 고른 칸을 화면낭독기도 알 수 있게
+    } else {
+      // disabled로 두면 눌린 표시조차 안 나서 "터치가 안 먹었다"고 느낀다(2026-07-29 Gim 지적).
+      // 고를 수 없다는 사실은 aria-disabled로 알리고, 실제 차단은 main.js의 onPick이 한다.
+      cell.setAttribute("aria-disabled", "true");
+      cell.setAttribute("aria-label", "빈 칸");
+      cell.tabIndex = -1;              // 아무 일도 안 하므로 키보드 순회에서는 뺀다
+    }
+    cell.addEventListener("click", () => onPick(i));
+    el.appendChild(cell);
+  }
+}
+
+function renderStats(els, state, perSecond, board) {
+  els.ore.textContent = fmt(state.ore);
+  els.auto.textContent = perSecond > 0 ? `자동 ${perSecond.toFixed(1)}/초` : "자동 채굴 없음";
+  els.best.textContent = `최고 ${state.best}등급`;
+  els.rounds.textContent = `${state.rounds}회차`;
+  // 스트릭은 이어지고 있을 때만 보여준다. 1일차부터 띄우면 아직 자랑거리가 아니라 잔소리가 된다.
+  if (els.streak) {
+    const on = state.streak > 1;
+    els.streak.hidden = !on;
+    if (on) els.streak.textContent = `🔥 ${state.streak}일 연속`;
+  }
+  if (board) els.top.textContent = `이번 판 최고 ${highestLevel(board)}등급`;
+}
+
+// 제련소 — 아이콘 타일 한 줄. 좁은 화면에 다 담기 위해 글자를 아이콘으로 줄였고,
+// 이름·설명은 title과 aria-label에 남겨 두어 눌러 보지 않아도·화면낭독기로도 알 수 있게 한다.
+function renderUpgrades(el, state, onBuy) {
+  el.innerHTML = "";
+  for (const u of UPGRADES) {
+    const cost = costOf(state, u.id);
+    const maxed = isMaxed(state, u.id);
+    const label = labelOf(state, u.id);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tile" + (maxed ? " maxed" : "");
+    btn.disabled = maxed || cost === null || state.ore < cost;
+    btn.title = `${u.name} — ${u.desc}`;
+    btn.setAttribute("aria-label", `${u.name} ${label}, ${maxed ? "최대" : fmt(cost) + " 광석"}`);
+    btn.innerHTML =
+      `<span class="ico">${u.icon}</span>` +
+      `<span class="val">${label}</span>` +
+      `<span class="cost">${maxed ? "최대" : fmt(cost)}</span>`;
+    btn.addEventListener("click", () => onBuy(u.id));
+    el.appendChild(btn);
+  }
+}
+
+// 창고 — 아이콘을 누르면 쓰고, 그 아래 가격을 누르면 산다.
+// 한 타일에 두 동작이 있으므로 누르는 자리를 위아래로 확실히 갈라 둔다.
+function renderItems(el, state, pending, onBuy, onUse) {
+  el.innerHTML = "";
+  for (const it of ITEMS) {
+    const have = countOf(state, it.id);
+    const picking = pending === it.id;
+
+    const wrap = document.createElement("div");
+    wrap.className = "tile-wrap" + (picking ? " picking" : "");
+
+    const use = document.createElement("button");
+    use.type = "button";
+    use.className = "tile";
+    use.disabled = have <= 0 && !picking;
+    use.title = `${it.name} — ${it.desc}`;
+    use.setAttribute("aria-label", `${it.name} ${have}개, ${picking ? "고르기 취소" : "쓰기"}`);
+    use.innerHTML =
+      `<span class="ico">${it.icon}</span>` +
+      `<span class="val">${picking ? "취소" : `${have}개`}</span>`;
+    use.addEventListener("click", () => onUse(it.id));
+
+    const buy = document.createElement("button");
+    buy.type = "button";
+    buy.className = "cost-btn";
+    buy.disabled = state.ore < it.cost;
+    buy.setAttribute("aria-label", `${it.name} 구입, ${it.cost} 광석`);
+    buy.textContent = `+${fmt(it.cost)}`;
+    buy.addEventListener("click", () => onBuy(it.id));
+
+    wrap.append(use, buy);
+    el.appendChild(wrap);
+  }
+}
+
+// 갱도 모드 고르기 — 첫 접속 때, 그리고 모드 버튼을 눌렀을 때 뜬다
+function renderModes(el, state, onPick) {
+  el.innerHTML = "";
+  const 현재 = modeOf(state);
+  for (const m of MODES) {
+    const 고른것 = state.mode === m.size;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mode-opt" + (고른것 ? " on" : "");
+    btn.setAttribute("aria-label", `${m.size}×${m.size} ${m.name}, ${m.desc}`);
+    btn.innerHTML =
+      `<span class="mode-size">${m.size}×${m.size}</span>` +
+      `<span class="mode-name">${m.name}${고른것 ? " · 지금" : ""}</span>` +
+      `<span class="mode-desc">${m.desc}</span>`;
+    btn.addEventListener("click", () => onPick(m.size));
+    el.appendChild(btn);
+  }
+  return 현재;
+}
+
+// 테마 고르기 — 갱도 고르기와 같은 모달·같은 모양을 쓴다
+function renderThemes(el, state, onPick) {
+  el.innerHTML = "";
+  const 지금 = themeOf(state);
+  for (const t of THEMES) {
+    const 고른것 = t.id === 지금;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mode-opt" + (고른것 ? " on" : "");
+    btn.setAttribute("aria-pressed", String(고른것));
+    btn.innerHTML =
+      `<span class="mode-name">${t.name}${고른것 ? " · 지금" : ""}</span>` +
+      `<span class="mode-desc">${t.desc}</span>`;
+    btn.addEventListener("click", () => onPick(t.id));
+    el.appendChild(btn);
+  }
+}
+
+// 아이콘 설명표 — 폰에는 마우스 오버가 없어 title이 보이지 않는다.
+// 아이콘만으로는 처음 온 사람이 뭐가 뭔지 알 수 없으므로 규칙 안에 글로 남긴다.
+// 상단 버튼 설명 — 이름만으로는 "어디까지 되돌리는지"가 안 보인다(2026-07-29 Gim 지적).
+const 상단버튼 = [
+  { icon: "🔁", name: "판 새로", desc: "지금 판만 새 보드로 바꿉니다. 광석·업그레이드·아이템은 그대로입니다. 판이 꼬였을 때 쓰십시오." },
+  { icon: "⚠️", name: "처음부터", desc: "광석·업그레이드·아이템·기록을 전부 지우고 새로 시작합니다. 되돌릴 수 없습니다." },
+];
+
+function renderLegend(el) {
+  el.innerHTML = "";
+  for (const [제목, 목록] of [["위쪽 버튼", 상단버튼], ["창고", ITEMS], ["제련소", UPGRADES]]) {
+    const h = document.createElement("div");
+    h.className = "legend-title";
+    h.textContent = 제목;
+    el.appendChild(h);
+    for (const x of 목록) {
+      const row = document.createElement("div");
+      row.className = "legend-row";
+      row.innerHTML = `<span class="legend-ico">${x.icon}</span><b>${x.name}</b> — ${x.desc}`;
+      el.appendChild(row);
+    }
+  }
+}
+
+function toast(el, msg) {
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+// 결과 공유 — 판이 끝난 보드를 이모지로 옮겨 클립보드에 넣는다 (서버·계정 불필요)
+
+// 0번은 빈칸, 1~10번은 등급. 타일 색 순서(어둠→빛)와 맞추고, 위로 갈수록 특별해 보이게 골랐다.
+// 🔴 2026-07-30 — 등급을 12 → 10단계로 줄이며 이모지도 색·효과와 함께 2단계 내렸다(Gim 지시).
+// 예전 3~12번이 새 1~10번이 된다. 여기만 안 내리면 공유 격자가 화면 색과 어긋난다.
+const TILE = ["⬛", "🟩", "🟫", "🟥", "🔷", "⬜", "🟨", "⚪", "💠", "⭐", "✨"];
+
+function tile(level) {
+  if (level === null || level === undefined) return TILE[0];
+  return TILE[level] || TILE[TILE.length - 1];
+}
+
+function grid(board) {
+  const rows = [];
+  for (let r = 0; r < board.size; r++) {
+    let line = "";
+    for (let c = 0; c < board.size; c++) line += tile(board.cells[r * board.size + c]);
+    rows.push(line);
+  }
+  return rows.join("\n");
+}
+
+function topLevel(board) {
+  let top = 0;
+  for (const v of board.cells) if (v !== null && v > top) top = v;
+  return top;
+}
+
+// 공유 문구를 만든다. 화면을 건드리지 않는 순수 함수라 테스트할 수 있다.
+function buildShareText(state, board, url = "") {
+  const lines = [];
+  if (board) {
+    const top = topLevel(board);
+    lines.push(`한칸만더 ⛏ ${state.rounds}회차 · 최고 ${top}등급(${oreName(top)})`);
+    lines.push("");
+    lines.push(grid(board));
+    lines.push("");
+  } else {
+    lines.push(`한칸만더 ⛏ ${state.rounds}회차`);
+    lines.push("");
+  }
+
+  const tail = [`💎 ${Math.floor(state.ore).toLocaleString()} 광석`];
+  if (state.streak > 1) tail.push(`🔥 ${state.streak}일 연속`);
+  lines.push(tail.join(" · "));
+
+  if (url) lines.push(url);
+  return lines.join("\n");
+}
+
+// 지금 열려 있는 주소. 공유받은 사람이 그대로 눌러 들어올 수 있어야 유입이 된다.
+function currentUrl() {
+  try {
+    return location.origin + location.pathname;
+  } catch {
+    return "";
+  }
+}
+
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // HTTPS가 아니거나 권한이 없으면 아래 대체 경로로 넘어간다
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// 게임 진입점 — 상태·보드·업그레이드를 엮고 루프를 돌린다
+
+
+
+
+
+
+
+
+
+// 아티팩트처럼 "내용 높이에 맞춰 늘어나는 틀" 안에서는 100dvh가 순환 참조가 된다.
+// (틀 높이 → 보드 크기 → 내용 높이 → 틀 높이 …) 그대로 두면 보드가 최소치까지 쪼그라든다.
+// 액자 안일 때는 화면 높이에 맞추지 않고 고정 크기를 쓴다.
+if (window.self !== window.top) document.documentElement.classList.add("framed");
+
+const els = {
+  board: document.getElementById("board"),
+  ups: document.getElementById("upgrades"),
+  ore: document.getElementById("ore"),
+  auto: document.getElementById("auto"),
+  best: document.getElementById("best"),
+  rounds: document.getElementById("rounds"),
+  top: document.getElementById("top"),
+  toast: document.getElementById("toast"),
+  over: document.getElementById("over"),
+  overText: document.getElementById("over-text"),
+  again: document.getElementById("again"),
+  mine: document.getElementById("mine"),
+  mineLeft: document.getElementById("mine-left"),
+  streak: document.getElementById("streak"),
+  share: document.getElementById("share"),
+  items: document.getElementById("items"),
+  itemHint: document.getElementById("item-hint"),
+  modePick: document.getElementById("mode-pick"),
+  modeList: document.getElementById("mode-list"),
+  modeBtn: document.getElementById("mode-btn"),
+  restart: document.getElementById("restart"),
+  resetBtn: document.getElementById("reset"),
+  themePick: document.getElementById("theme-pick"),
+  themes: document.getElementById("themes"),
+  themeBtn: document.getElementById("theme-btn"),
+  ask: document.getElementById("ask"),
+  askTitle: document.getElementById("ask-title"),
+  askBody: document.getElementById("ask-body"),
+  askOk: document.getElementById("ask-ok"),
+  askCancel: document.getElementById("ask-cancel"),
+};
+
+let state = load();
+let board = null;
+let selected = null;
+let stuck = false;
+let pendingItem = null;   // 대상을 고르는 중인 아이템 id
+let picking = null;       // 열려 있는 모달: null · "mode" · "theme"
+let fx = null;            // 이번 한 번만 재생할 연출 { pop: 합쳐진 칸, in: 새로 캔 칸 }
+
+function perSecond() {
+  return valueOf(state, "auto");
+}
+
+// 살 수 있는지 여부가 바뀔 때만 제련소를 다시 그린다.
+// 매초 통째로 다시 그리면 누르려는 순간 버튼이 교체되어 깜빡이고 초점이 풀린다.
+let affordSig = "";
+function currentAffordSig() {
+  const ups = UPGRADES.map((u) => {
+    const c = costOf(state, u.id);
+    return c === null ? "m" : state.ore >= c ? "1" : "0";
+  });
+  const its = ITEMS.map((i) => (state.ore >= i.cost ? "1" : "0"));
+  return ups.concat(its).join("");
+}
+
+// 화면의 "최고 N등급"은 합성뿐 아니라 채굴이나 새 판에서 나온 광석도 반영해야 한다.
+// 광맥 순도를 올리면 캐자마자 높은 등급이 나오는데, 그걸 빠뜨리고 있었다(2026-07-29 발견).
+function 최고갱신() {
+  const top = highestLevel(board);
+  if (top > state.best) state.best = top;
+}
+
+function startRound() {
+  board = createBoard(valueOf(state, "boardSize"), valueOf(state, "startLevel"));
+  selected = null;
+  stuck = false;
+  pendingItem = null;
+  fx = null;                 // 이전 판의 연출이 새 판 칸에 잘못 붙지 않게 비운다
+  최고갱신();
+  els.over.hidden = true;
+  draw();
+}
+
+function draw() {
+  renderBoard(els.board, board, selected, onPick, fx);
+  fx = null;                      // 연출은 한 번만 재생한다
+  renderStats(els, state, perSecond(), board);
+  renderUpgrades(els.ups, state, onBuy);
+  renderItems(els.items, state, pendingItem, onBuyItem, onUseItem);
+  els.itemHint.textContent = pendingItem
+    ? `${itemById(pendingItem).name} — 쓸 칸을 고르십시오`
+    : "아이템을 사 두면 판 안에서 쓸 수 있습니다";
+  els.board.classList.toggle("picking", !!pendingItem);
+  // 두 버튼 다 "지금 값"을 그대로 보여 준다. 누르면 그 값을 고르는 모달이 열린다.
+  els.modeBtn.textContent = `${modeOf(state)}×${modeOf(state)}`;
+  els.themeBtn.textContent = (THEMES.find((t) => t.id === themeOf(state)) || THEMES[0]).name;
+  affordSig = currentAffordSig();
+  const left = emptyCells(board).length;
+  els.mine.disabled = stuck || picking || left === 0;
+  els.mineLeft.textContent = left > 0 ? `(빈칸 ${left})` : "(빈칸 없음)";
+}
+
+function onPick(i) {
+  if (stuck || picking) return;
+
+  // 아이템을 쓰는 중이면 이 칸이 그 대상이다
+  if (pendingItem) {
+    const it = itemById(pendingItem);
+    if (useItem(state, board, pendingItem, i)) {
+      if (it.id === "refine") fx = { pop: i };
+      pendingItem = null;
+      selected = null;
+      최고갱신();
+      toast(els.toast, `${it.name} 사용`);
+      // 정제로 합칠 짝이 사라지거나 하면 그 자리에서 판이 끝날 수 있다
+      if (isStuck(board)) endRound();
+      save(state);
+    } else {
+      toast(els.toast, "여기에는 쓸 수 없습니다");
+    }
+    draw();
+    return;
+  }
+
+  // 빈칸은 고를 수 없다. 버튼 자체는 눌리게 두어 손끝 반응은 주고, 여기서 조용히 무시한다.
+  if (board.cells[i] === null) return;
+
+  if (selected === null) {
+    selected = i;
+    draw();
+    return;
+  }
+  if (selected === i) {
+    selected = null;
+    draw();
+    return;
+  }
+  if (canMerge(board, selected, i)) {
+    const gained = Math.floor(merge(board, selected, i) * valueOf(state, "yield"));
+    state.ore += gained;
+    fx = { pop: i };               // 합쳐진 칸만 튀어오르게 한다
+    최고갱신();
+    selected = null;
+    // 합성은 광석 개수를 줄인다. 채우는 것은 오직 채굴뿐이라 진행 속도를 플레이어가 쥔다.
+    if (isStuck(board)) endRound();
+    save(state);
+  } else {
+    // 합칠 수 없으면 새로 고른 칸을 선택으로 넘긴다 (헛클릭 스트레스 감소)
+    selected = i;
+  }
+  draw();
+}
+
+function endRound() {
+  stuck = true;
+  state.rounds += 1;
+  const bonus = roundBonus(board, valueOf(state, "yield"));
+  state.ore += bonus;
+  els.overText.textContent =
+    `더 합칠 곳이 없습니다. 이번 판 최고 ${highestLevel(board)}등급, 정산 보너스 ${fmt(bonus)} 광석.`;
+  els.over.hidden = false;
+  save(state);
+}
+
+function onBuy(id) {
+  if (buy(state, id)) {
+    save(state);
+    toast(els.toast, "업그레이드 완료");
+    // 보드 크기가 바뀌면 다음 판부터 적용된다
+    draw();
+  }
+}
+
+// 테마 — 색 세트만 바꾼다. :root의 data-theme을 CSS가 읽는다.
+function applyTheme() {
+  document.documentElement.dataset.theme = themeOf(state);
+}
+
+// 모달을 닫는다. 판이 이미 끝나 있었다면 종료 화면을 되살려야 한다 —
+// 안 그러면 종료 화면이 사라진 채 보드가 얼어붙어 아무것도 못 하게 된다.
+function 모달닫기() {
+  picking = null;
+  els.modePick.hidden = true;
+  els.themePick.hidden = true;
+  els.ask.hidden = true;
+  els.over.hidden = !stuck;
+}
+
+// 확인 팝업 — 브라우저 기본 confirm() 대신 쓴다.
+// 무엇이 사라지고 무엇이 남는지 문장으로 보여 줘야 두 버튼을 구분할 수 있다(2026-07-29 Gim 지적).
+let 확인하면 = null;
+function 물어보기(제목, 본문, 실행) {
+  els.askTitle.textContent = 제목;
+  els.askBody.innerHTML = 본문;
+  확인하면 = 실행;
+  picking = "ask";
+  pendingItem = null;
+  els.over.hidden = true;
+  els.modePick.hidden = true;
+  els.themePick.hidden = true;
+  els.ask.hidden = false;
+  draw();
+}
+els.askOk.addEventListener("click", () => {
+  const 실행 = 확인하면;
+  확인하면 = null;
+  모달닫기();
+  if (실행) 실행();
+});
+els.askCancel.addEventListener("click", () => {
+  확인하면 = null;
+  모달닫기();
+  draw();
+});
+
+function openThemePicker() {
+  picking = "theme";
+  pendingItem = null;
+  els.over.hidden = true;
+  els.modePick.hidden = true;
+  renderThemes(els.themes, state, onPickTheme);
+  els.themePick.hidden = false;
+  draw();
+}
+
+function onPickTheme(id) {
+  if (!setTheme(state, id)) return;
+  applyTheme();
+  save(state);
+  모달닫기();
+  draw();
+  toast(els.toast, (THEMES.find((t) => t.id === id) || {}).name || "테마 변경");
+}
+
+// 갱도 크기 고르기 — 첫 접속이면 자동으로, 그 뒤에는 버튼으로 연다
+function openPicker() {
+  picking = "mode";
+  pendingItem = null;
+  els.over.hidden = true;               // 종료 화면과 겹치지 않게
+  els.themePick.hidden = true;
+  renderModes(els.modeList, state, onPickMode);
+  els.modePick.hidden = false;
+  draw();
+}
+
+function onPickMode(size) {
+  const 바뀜 = size !== modeOf(state) || needsPick(state);
+  setMode(state, size);
+  save(state);
+  모달닫기();
+  // 보드 크기가 달라졌으므로 판을 새로 시작한다(진행·광석·업그레이드는 그대로).
+  if (바뀜) startRound(); else draw();
+  toast(els.toast, `갱도 ${size}×${size}`);
+}
+
+// ── 끌어서 합치기 ──
+// 탭 두 번(고르고 → 누르기)은 그대로 둔다. 아이템 대상 고르기는 탭이라야 하기 때문이다.
+// 포인터 이벤트를 쓰므로 손가락·마우스가 같은 코드로 동작한다.
+// 칸은 매 탭마다 새로 만들어지므로, 칸마다 붙이지 않고 보드에 한 번만 붙인다.
+let 끌기 = null;      // { 시작: 칸번호, x·y: 시작 좌표, 움직였나: boolean }
+let 드래그로끝냄 = false;   // 드래그로 처리했으면 뒤따라오는 click을 무시한다
+const 끌기시작거리 = 10;    // 이만큼 움직이면 드래그로 본다(칸 크기와 무관)
+const 방향최소거리 = 14;    // 이만큼은 움직여야 방향으로 인정한다
+
+// 끈 방향의 바로 옆 칸. 손가락이 옆 칸에 닿기 전에 떼도 의도를 살린다.
+function 방향이웃(i, dx, dy) {
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 방향최소거리) return -1;
+  const n = board.size, r = Math.floor(i / n), c = i % n;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const nc = c + (dx > 0 ? 1 : -1);
+    return nc >= 0 && nc < n ? r * n + nc : -1;
+  }
+  const nr = r + (dy > 0 ? 1 : -1);
+  return nr >= 0 && nr < n ? nr * n + c : -1;
+}
+
+function 칸번호(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const cell = el && el.closest ? el.closest(".cell") : null;
+  if (!cell || cell.parentElement !== els.board) return -1;
+  return [...els.board.children].indexOf(cell);
+}
+
+els.board.addEventListener("pointerdown", (e) => {
+  // 새 조작이 시작되면 이전 조작의 잔재를 지운다.
+  // 드래그가 보드 밖에서 끝나면 click이 뒤따라오지 않아 플래그가 남고,
+  // 그러면 다음 탭이 통째로 먹힌다(2026-07-29 실제로 겪음).
+  드래그로끝냄 = false;
+  if (stuck || picking || pendingItem) return;
+  const i = 칸번호(e.clientX, e.clientY);
+  if (i < 0 || board.cells[i] === null) return;
+  끌기 = { 시작: i, x: e.clientX, y: e.clientY, 움직였나: false };
+  // 손가락이 보드를 벗어나도 계속 추적한다
+  try { els.board.setPointerCapture(e.pointerId); } catch {}
+});
+
+els.board.addEventListener("pointermove", (e) => {
+  if (!끌기 || 끌기.움직였나) return;
+  // 드래그 판정을 "다른 칸에 들어갔는가"로 두면 칸이 클수록 더 멀리 끌어야 한다.
+  // 4×4(칸 63px)에서는 41px 미만이면 100% 실패했다(2026-07-29 실측). 픽셀 거리로 바꾼다.
+  if (Math.hypot(e.clientX - 끌기.x, e.clientY - 끌기.y) < 끌기시작거리) return;
+  // 어디서 출발했는지 보이게 시작 칸을 고른 것으로 표시한다
+  끌기.움직였나 = true;
+  selected = 끌기.시작;
+  draw();
+});
+
+function 끌기끝(e) {
+  const d = 끌기;
+  끌기 = null;
+  try { els.board.releasePointerCapture(e.pointerId); } catch {}
+  if (!d || !d.움직였나) return;        // 제자리에서 뗐으면 그냥 탭이다 — click 처리에 맡긴다
+
+  // ① 손을 뗀 자리가 합칠 수 있는 칸이면 그대로 쓴다(의도가 가장 분명하다)
+  let j = 칸번호(e.clientX, e.clientY);
+  // ② 아니면 끈 방향의 바로 옆 칸을 본다.
+  //    칸이 크면 옆 칸까지 가기 전에 떼는 일이 잦은데, 그걸 실패로 처리하면 "드래그가 안 먹는다"가 된다.
+  if (!(j >= 0 && canMerge(board, d.시작, j))) {
+    j = 방향이웃(d.시작, e.clientX - d.x, e.clientY - d.y);
+  }
+
+  if (j === d.시작) { 드래그로끝냄 = true; return; }   // 제자리로 돌아왔으면 고른 상태로 둔다
+  드래그로끝냄 = true;
+  if (j >= 0 && canMerge(board, d.시작, j)) {
+    selected = d.시작;
+    onPick(j);                          // 합성은 기존 경로를 그대로 탄다
+  } else {
+    selected = null;                    // 엉뚱한 곳에 놓으면 취소
+    draw();
+  }
+}
+els.board.addEventListener("pointerup", 끌기끝);
+els.board.addEventListener("pointercancel", (e) => { 끌기 = null; try { els.board.releasePointerCapture(e.pointerId); } catch {} });
+
+// 드래그로 이미 처리한 경우, 뒤따라오는 click이 한 번 더 먹지 않게 가로챈다
+els.board.addEventListener("click", (e) => {
+  if (!드래그로끝냄) return;
+  드래그로끝냄 = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+
+function onBuyItem(id) {
+  if (buyItem(state, id)) {
+    save(state);
+    toast(els.toast, `${itemById(id).name} 구입`);
+    draw();
+  }
+}
+
+function onUseItem(id) {
+  if (stuck || picking) return;
+  if (pendingItem === id) {          // 같은 버튼을 다시 누르면 취소
+    pendingItem = null;
+    draw();
+    return;
+  }
+  if (countOf(state, id) <= 0) return;
+  const it = itemById(id);
+  if (it.needsTarget) {
+    pendingItem = id;
+    selected = null;                 // 합성 선택과 섞이지 않게 비운다
+    draw();
+    return;
+  }
+  // 셔플처럼 대상이 없는 것은 바로 적용된다
+  if (useItem(state, board, id, null)) {
+    toast(els.toast, `${it.name} 사용`);
+    if (isStuck(board)) endRound();
+    save(state);
+  }
+  draw();
+}
+
+function onMine() {
+  if (stuck || picking) return;
+  const 캐기전빈칸 = emptyCells(board);
+  if (!spawn(board, valueOf(state, "startLevel"))) return;
+  const 새칸 = 캐기전빈칸.find((i) => board.cells[i] !== null);
+  if (새칸 !== undefined) fx = { in: 새칸 };
+  최고갱신();
+  if (isStuck(board)) endRound();
+  save(state);
+  draw();
+}
+
+els.mine.addEventListener("click", onMine);
+els.again.addEventListener("click", startRound);
+els.modeBtn.addEventListener("click", () => { if (picking) { 모달닫기(); draw(); } else openPicker(); });
+els.themeBtn.addEventListener("click", () => { if (picking) { 모달닫기(); draw(); } else openThemePicker(); });
+// 판 새로 — 지금 판만 버리고 새 보드로. 광석·업그레이드·아이템은 그대로다.
+// 회차는 올리지 않고 종료 보너스도 주지 않는다(끝낸 판이 아니므로) → 반복해도 이득이 없다.
+els.restart.addEventListener("click", () => {
+  if (picking) return;
+  물어보기(
+    "판을 새로 열까요?",
+    "지금 판의 <strong>배치만</strong> 사라집니다.<br>광석·업그레이드·아이템·기록은 <strong>그대로 남습니다.</strong><br>판이 꼬였을 때 쓰십시오.",
+    () => { startRound(); toast(els.toast, "새 판을 열었습니다"); }
+  );
+});
+
+// 처음부터 다시 — 저장본을 지우고 새 게임으로 돌아간다.
+// 상시 보이는 자리라 확인창을 반드시 거친다. 한 번 지우면 되돌릴 수 없다.
+els.resetBtn.addEventListener("click", () => {
+  if (picking) return;
+  물어보기(
+    "처음부터 다시 시작할까요?",
+    "광석·업그레이드·아이템·기록이 <strong>모두 사라집니다.</strong><br><strong>되돌릴 수 없습니다.</strong>",
+    () => {
+      reset();
+      state = load();
+      applyTheme();
+      startRound();
+      // 초기화하면 고른 갱도 크기도 지워지므로 다시 물어야 한다(안 물으면 조용히 기본값이 된다)
+      if (needsPick(state)) openPicker();
+    }
+  );
+});
+els.share.addEventListener("click", async () => {
+  const text = buildShareText(state, board, currentUrl());
+  const ok = await copyToClipboard(text);
+  toast(els.toast, ok ? "결과를 복사했습니다" : "복사에 실패했습니다");
+});
+
+// 다른 탭에서 저장하면 이쪽 메모리는 낡은 것이 된다. 그대로 두면 1초 뒤 이쪽이 저장하면서
+// 상대 탭의 진행을 통째로 덮어쓴다(test/multitab.test.mjs 에 재현해 두었다).
+// 보드는 저장하지 않으므로 지금 판은 그대로 두고 광석·업그레이드·아이템만 최신으로 맞춘다.
+window.addEventListener("storage", (e) => {
+  if (e.key !== STORAGE_KEY) return;
+  const 새상태 = parseStateOrNull(e.newValue);
+  if (!새상태) return;        // 깨진 값이면 무시한다(이쪽 진행을 지키는 쪽이 안전하다)
+  state = 새상태;
+  applyTheme();
+  draw();
+});
+
+// 접속 기록 — 스트릭은 표시만 하고 보상은 주지 않는다(밸런스에 손대지 않기 위해)
+const streakEvent = touch(state);
+save(state);
+
+// 자동 채굴: 화면에서는 1초마다, 떠나 있던 시간은 복귀할 때 한 번에 정산
+const offline = collectOffline(state, perSecond());
+setInterval(() => {
+  const ps = perSecond();
+  if (ps > 0) {
+    state.ore += ps;
+    renderStats(els, state, ps, board);
+    const sig = currentAffordSig();
+    if (sig !== affordSig) {
+      renderUpgrades(els.ups, state, onBuy);
+      renderItems(els.items, state, pendingItem, onBuyItem, onUseItem);
+      affordSig = sig;
+    }
+  }
+  save(state);
+}, 1000);
+
+applyTheme();
+renderLegend(document.getElementById("legend"));   // 내용이 바뀌지 않으므로 한 번만 그린다
+startRound();
+
+// 첫 접속이면 갱도 크기부터 고르게 한다
+if (needsPick(state)) openPicker();
+
+// 알림은 하나만 띄운다. 두 개를 연달아 띄우면 뒤엣것이 앞엣것을 지워 버린다.
+const notes = [];
+if (streakEvent === "extend" && state.streak > 1) notes.push(`🔥 ${state.streak}일 연속`);
+if (offline > 0) notes.push(`자리를 비운 동안 ${fmt(offline)} 광석을 캤습니다`);
+if (notes.length) toast(els.toast, notes.join(" · "));
+</script>
+</body>
+</html>
