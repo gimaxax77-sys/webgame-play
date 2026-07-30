@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>2048 — 밀어서 합치기</title>
+<meta name="description" content="같은 숫자를 밀어 붙여 2048을 만드는 퍼즐. 설치 없이 브라우저에서 바로.">
+<style>
+/* 「2048」 화면 스타일 — 모바일 세로 우선, 외부 폰트·라이브러리 없음 */
+
+:root {
+  /* 다른 게임과 같은 토큰을 쓴다 — 목록에서 넘어올 때 화면이 튀지 않게 */
+  --bg: #14161c;
+  --panel: #1c1f27;
+  --line: #2a2e39;
+  --text: #e8eaf0;
+  --dim: #97a0b5;
+  --accent: #f0b429;
+  --gap: 8px;
+}
+
+* { box-sizing: border-box; }
+
+/* hidden 속성이 항상 이기게 한다.
+   .over 처럼 display 를 지정한 요소는 브라우저 기본 [hidden]{display:none} 을 눌러 버린다. */
+[hidden] { display: none !important; }
+
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+
+body {
+  margin: 0;
+  padding: 8px 12px 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Malgun Gothic", "맑은 고딕", system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  /* 한글은 기본값이면 낱글자 단위로 잘린다("사라집 / 니다") */
+  word-break: keep-all;
+  max-width: 560px;
+  margin-inline: auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  /* 연달아 쓸어 넘길 때 숫자가 선택돼 파랗게 물드는 것을 막는다 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 남는 높이를 판 위아래로 고르게 나눈다.
+   「째깍벨트」처럼 한 곳에만 몰면(margin-bottom:auto) 이 게임은 아래에 패널이 없어서
+   현황 줄과 판 사이에 230px짜리 빈 구멍이 생긴다(실측). 판이 유일한 조작 대상이므로
+   가운데에 두어도 아래 절반이 엄지 영역에 들어온다. */
+main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+/* 최상단 한 줄 — 좌우를 1fr로 같게 잡아야 제목이 정중앙에 온다 */
+header.topbar {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 8px; margin-bottom: 3px;
+}
+header.topbar .topleft { justify-self: start; }
+header.topbar .topright { justify-self: end; }
+h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; }
+.sub { margin: 0 0 6px; color: var(--dim); font-size: .72rem; text-align: center; }
+
+.topbtn {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 10px; font-size: .74rem; cursor: pointer;
+}
+.topbtn:hover { border-color: var(--accent); }
+
+/* 현황 — 한 줄로 눌러 담는다.
+   남는 높이를 여기 아래로 몰아 판을 엄지가 닿는 아래쪽으로 내린다(「째깍벨트」와 같은 처리). */
+.statusbar {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 6px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.score-box { display: flex; align-items: baseline; gap: 4px; }
+.score-num { font-size: 1.6rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.score-unit { font-size: .74rem; color: var(--dim); }
+.meta { display: flex; align-items: center; gap: 10px; font-size: .72rem; color: var(--dim); }
+.meta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 알림 줄 — 높이를 고정해 두어 글이 떴다 사라질 때 아래가 밀리지 않는다 */
+.notice { height: 22px; display: flex; align-items: center; justify-content: center; margin: 6px 0 2px; }
+.toast {
+  background: #2a2e39; color: #bde8c4;
+  border: 1px solid #3a5a3f;
+  padding: 3px 12px; border-radius: 999px;
+  font-size: .74rem; opacity: 0; pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity .18s, transform .18s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* ── 판 ───────────────────────────────── */
+.stage-wrap { position: relative; }
+
+.board {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--gap);
+  aspect-ratio: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  /* 🔴 쓸어 넘기는 동작이 화면 스크롤·당겨서 새로고침으로 새지 않게 한다.
+     이게 없으면 폰에서 위아래 스와이프가 게임에 들어오지 않는다. */
+  touch-action: none;
+}
+
+.tile {
+  display: grid; place-items: center;
+  border-radius: 10px;
+  font-size: 1.6rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: #191c24;
+  color: var(--text);
+}
+.tile.empty { background: #171a21; }
+/* 자릿수가 늘면 글자를 줄인다. 안 그러면 네 자리부터 칸 밖으로 나간다. */
+.tile.wide { font-size: 1.25rem; }
+.tile.long { font-size: .95rem; letter-spacing: -.02em; }
+
+/* 값이 커질수록 밝고 따뜻해진다 — 진행이 눈에 보이게.
+   숫자가 함께 찍히므로 색은 보조 축이다(색만으로 구분하지 않는다). */
+.tile.t1  { background: #333b49; }
+.tile.t2  { background: #3f4d66; }
+.tile.t3  { background: #1d6b93; }
+.tile.t4  { background: #1a8b86; }
+.tile.t5  { background: #2c9b57; }
+.tile.t6  { background: #7ba32b; color: #12141a; }
+.tile.t7  { background: #c39b1e; color: #12141a; }
+.tile.t8  { background: #e08a1e; color: #12141a; }
+.tile.t9  { background: #e2621f; color: #12141a; }
+.tile.t10 { background: #dd3f4a; color: #ffffff; }
+.tile.t11 { background: #e0407f; color: #ffffff; box-shadow: 0 0 14px -2px #e0407f; }
+
+/* 판 종료·달성 안내 — 판 영역을 덮는다 */
+.over {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(15, 17, 22, .93);
+  border: 1px solid var(--line); border-radius: 14px;
+  text-align: center; padding: 16px;
+}
+.over strong { font-size: 1.1rem; }
+.over p { margin: 0; font-size: .86rem; line-height: 1.7; color: var(--dim); }
+.over em { color: var(--accent); font-style: normal; font-weight: 700; }
+.over-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+.primary {
+  background: var(--accent); color: #1a1408;
+  border: 0; border-radius: 10px;
+  padding: 11px 20px; font-size: .9rem; font-weight: 700; cursor: pointer;
+}
+.ghost {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 18px; font-size: .9rem; cursor: pointer;
+}
+.ghost:hover { border-color: var(--accent); }
+.primary:active, .ghost:active { transform: scale(.97); }
+
+.howto-hint { margin: 10px 0 0; font-size: .74rem; color: var(--dim); text-align: center; }
+
+/* 규칙 */
+.howto { margin-top: 10px; font-size: .74rem; color: var(--dim); }
+.howto summary { cursor: pointer; padding: 4px 0; }
+.howto ul { margin: 6px 0; padding-left: 18px; }
+.howto li { margin-bottom: 4px; }
+.credit { margin: 8px 0 0; font-size: .68rem; opacity: .75; }
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topleft"></div>
+  <h1>2048</h1>
+  <div class="topright">
+    <button type="button" id="restart" class="topbtn">새 판</button>
+  </div>
+</header>
+<p class="sub">같은 숫자를 밀어 붙이면 <strong>하나로 합쳐집니다.</strong> 2048을 만드십시오.</p>
+
+<main>
+  <section class="statusbar" aria-label="현황">
+    <div class="score-box">
+      <span class="score-num" id="score">0</span>
+      <span class="score-unit">점</span>
+    </div>
+    <div class="meta">
+      <span>최고 <b id="best">0</b></span>
+      <span id="moves">0수</span>
+      <span id="top"></span>
+    </div>
+  </section>
+
+  <div class="notice"><span id="toast" class="toast" role="status" aria-live="polite"></span></div>
+
+  <section class="stage-wrap">
+    <!-- 스와이프가 화면 스크롤로 새지 않게 touch-action 을 CSS에서 none 으로 둔다 -->
+    <div id="board" class="board" aria-label="2048 판"></div>
+
+    <div id="over" class="over" hidden>
+      <strong id="over-title"></strong>
+      <p id="over-text"></p>
+      <div class="over-btns">
+        <button type="button" id="keep" class="ghost" hidden>계속하기</button>
+        <button type="button" id="again" class="primary">새 판</button>
+      </div>
+    </div>
+  </section>
+
+  <p class="howto-hint">화면을 <strong>쓸어서</strong> 움직입니다. 키보드는 방향키·WASD.</p>
+
+  <details class="howto">
+    <summary>규칙 보기</summary>
+    <ul>
+      <li>상하좌우로 밀면 모든 타일이 그 방향 끝까지 이동합니다.</li>
+      <li>맞닿은 <strong>같은 숫자</strong>는 하나로 합쳐지고 두 배가 됩니다. 합쳐진 값이 곧 점수입니다.</li>
+      <li><strong>한 수에 같은 타일이 두 번 합쳐지지는 않습니다.</strong> 2·2·4를 왼쪽으로 밀면 8이 아니라 4·4가 됩니다.</li>
+      <li>한 번 움직일 때마다 빈 칸에 <strong>2</strong>가 하나 생깁니다(가끔 4).</li>
+      <li>아무 방향으로도 움직일 수 없으면 그 판은 끝입니다.</li>
+      <li><strong>2048</strong>을 만들면 달성입니다. 원한다면 계속해서 더 큰 타일을 노릴 수 있습니다.</li>
+      <li>진행 중인 판과 최고 점수는 이 브라우저에 저장되어 다음에 이어서 할 수 있습니다.</li>
+    </ul>
+    <p class="credit">규칙은 Gabriele Cirulli의 2048(2014, MIT)과 같습니다. 코드는 이 저장소에서 새로 작성했습니다.</p>
+  </details>
+</main>
+<script type="module">
+// 「2048」 조율값 — 값의 출처를 한 곳에만 둔다. 규칙 함수는 이 표를 인자로 받는다
+
+// 원작(Gabriele Cirulli, 2014)과 같은 값이다. Gim 지시가 "2048과 동일한 게임"이므로
+// 밸런스를 임의로 손보지 않았다. 바꿀 일이 생기면 시뮬레이션으로 재고 근거를 남긴다.
+const TUNE = {
+  SIZE: 4, // 판 한 변의 칸 수
+  START_TILES: 2, // 판을 시작할 때 놓는 타일 수
+  SPAWN_4_RATE: 0.1, // 새 타일이 4로 나올 확률 (나머지는 2)
+  WIN: 2048, // 이 값을 만들면 달성. 원작처럼 계속할 수 있다
+};
+
+// 타일이 움직이는 방향. 이 순서는 "막혔는지" 검사에서만 쓰이므로 의미는 없다.
+const DIRS = ["left", "right", "up", "down"];
+
+// 「2048」 격자 규칙 — 밀기·합치기·새 타일. 화면을 전혀 모른다
+
+// 격자는 길이 size*size 의 평평한 배열이고 0은 빈 칸이다.
+// 2차원 배열 대신 평평하게 둔 이유는 100만 판 하네스에서 복사 비용을 줄이기 위해서다.
+function newGrid(size = TUNE.SIZE) {
+  return new Array(size * size).fill(0);
+}
+
+// 방향마다 "벽에 가까운 쪽부터"의 인덱스 줄을 만든다.
+// 왼쪽으로 밀면 각 행을 0번 칸부터 훑어야 타일이 왼쪽으로 몰린다.
+// 100만 판에서 매번 만들면 낭비라 크기·방향별로 한 번만 만들어 둔다.
+const 줄캐시 = new Map();
+function lineIndexes(size, dir) {
+  const key = `${size}:${dir}`;
+  const 있음 = 줄캐시.get(key);
+  if (있음) return 있음;
+
+  const 줄들 = [];
+  for (let a = 0; a < size; a++) {
+    const 줄 = [];
+    for (let b = 0; b < size; b++) {
+      // 가로로 미는 방향은 행을, 세로로 미는 방향은 열을 훑는다
+      줄.push(dir === "left" || dir === "right" ? a * size + b : b * size + a);
+    }
+    // 오른쪽·아래로 밀면 벽이 반대편이므로 훑는 순서를 뒤집는다
+    if (dir === "right" || dir === "down") 줄.reverse();
+    줄들.push(줄);
+  }
+  줄캐시.set(key, 줄들);
+  return 줄들;
+}
+
+// 한 줄을 벽 쪽으로 몰고 같은 값끼리 합친다. 배열을 새로 만들지 않고 제자리에서 고친다
+// (100만 판에서 줄마다 배열 세 개를 만들면 그것만으로 몇 배 느려진다).
+//
+// 🔴 한 수에 같은 타일이 두 번 합쳐지지 않는다 — 합쳐서 만들어진 값은 그 수에서 다시 안 합친다.
+//    [2,2,4] → [4,4] (앞의 4가 뒤의 4와 또 합쳐져 [8]이 되면 안 된다)
+//    [4,4,8] → [8,8] · [2,2,2,2] → [4,4] · [2,2,2] → [4,2]
+function 줄밀기(grid, 줄) {
+  let 쓸자리 = 0; // 다음 타일을 놓을 자리(줄 안에서의 순번)
+  let 합친자리 = -1; // 이번 수에 합쳐서 만들어진 자리 — 여기에는 다시 합치지 않는다
+  let gained = 0;
+  let moved = false;
+
+  for (let 읽을자리 = 0; 읽을자리 < 줄.length; 읽을자리++) {
+    const 원래 = 줄[읽을자리];
+    const v = grid[원래];
+    if (v === 0) continue;
+    grid[원래] = 0; // 일단 들어낸다. 아래에서 제자리에 도로 놓을 수도 있다
+
+    const 앞자리 = 쓸자리 - 1;
+    if (앞자리 >= 0 && 합친자리 !== 앞자리 && grid[줄[앞자리]] === v) {
+      grid[줄[앞자리]] = v * 2;
+      gained += v * 2;
+      합친자리 = 앞자리;
+      moved = true;
+    } else {
+      const 놓을곳 = 줄[쓸자리];
+      grid[놓을곳] = v;
+      if (놓을곳 !== 원래) moved = true;
+      쓸자리++;
+    }
+  }
+  return { gained, moved };
+}
+
+// 격자를 한 방향으로 민다. 격자를 그 자리에서 고친다.
+// 반환 { moved, gained } — moved가 false면 아무것도 바뀌지 않았다는 뜻이고,
+// 그때는 새 타일을 놓지 않는다(원작과 같다. 어기면 막힌 판에서 타일이 계속 늘어난다).
+function slideGrid(grid, dir, tune = TUNE) {
+  let moved = false;
+  let gained = 0;
+  for (const 줄 of lineIndexes(tune.SIZE, dir)) {
+    const r = 줄밀기(grid, 줄);
+    gained += r.gained;
+    if (r.moved) moved = true;
+  }
+  return { moved, gained };
+}
+
+// 실제로 밀어 보지 않고 "이 방향으로 뭔가 바뀌는가"만 본다.
+// 격자를 복사하지 않으므로 봇 정책이 매 수마다 불러도 싸다.
+function canSlide(grid, dir, tune = TUNE) {
+  for (const 줄 of lineIndexes(tune.SIZE, dir)) {
+    for (let k = 1; k < 줄.length; k++) {
+      const v = grid[줄[k]];
+      if (v === 0) continue;
+      const 앞 = grid[줄[k - 1]];
+      if (앞 === 0 || 앞 === v) return true; // 빈칸이면 밀리고, 같은 값이면 합쳐진다
+    }
+  }
+  return false;
+}
+
+function emptyCells(grid) {
+  const 빈칸 = [];
+  for (let i = 0; i < grid.length; i++) if (grid[i] === 0) 빈칸.push(i);
+  return 빈칸;
+}
+
+// 빈 칸 하나에 새 타일을 놓는다. 값은 2가 기본이고 가끔 4다.
+// rand를 인자로 받아 두는 이유는 하네스가 씨앗 난수를 끼워 넣어 깨진 판을 재현하기 위해서다.
+function spawnTile(grid, rand = Math.random, tune = TUNE) {
+  const 빈칸 = emptyCells(grid);
+  if (빈칸.length === 0) return null;
+  const at = 빈칸[Math.floor(rand() * 빈칸.length)];
+  const value = rand() < tune.SPAWN_4_RATE ? 4 : 2;
+  grid[at] = value;
+  return { at, value };
+}
+
+// 움직일 수 있는가 = 빈 칸이 있거나 이웃한 같은 값이 있는가.
+// 네 방향을 밀어 보는 것보다 싸고 결과가 같다 — 둘이 같은지는 하네스가 매 수 검사한다.
+function canMove(grid, tune = TUNE) {
+  const size = tune.SIZE;
+  for (let i = 0; i < grid.length; i++) if (grid[i] === 0) return true;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const v = grid[r * size + c];
+      if (c + 1 < size && grid[r * size + c + 1] === v) return true;
+      if (r + 1 < size && grid[(r + 1) * size + c] === v) return true;
+    }
+  }
+  return false;
+}
+
+// 지금 밀 수 있는 방향들. 봇 정책과 화면이 함께 쓴다.
+function movableDirs(grid, tune = TUNE) {
+  const 가능 = [];
+  for (const dir of DIRS) if (canSlide(grid, dir, tune)) 가능.push(dir);
+  return 가능;
+}
+
+function maxTile(grid) {
+  let m = 0;
+  for (const v of grid) if (v > m) m = v;
+  return m;
+}
+
+// 격자에 놓인 값의 합. 합치기는 합을 바꾸지 않으므로(2+2=4)
+// 이 값은 "새로 놓인 타일의 합"과 정확히 같아야 한다 — 하네스의 핵심 불변식이다.
+function gridSum(grid) {
+  let s = 0;
+  for (const v of grid) s += v;
+  return s;
+}
+
+// 새 판 — 빈 격자에 시작 타일을 놓는다.
+function startGrid(rand = Math.random, tune = TUNE) {
+  const grid = newGrid(tune.SIZE);
+  for (let i = 0; i < tune.START_TILES; i++) spawnTile(grid, rand, tune);
+  return grid;
+}
+
+// 「2048」 한 수 진행 — 밀고·점수 올리고·새 타일 놓고·끝났는지 본다
+
+
+// 🔴 화면(main.js)과 스트레스 하네스가 **둘 다 이 함수만** 부른다.
+// 각자 따로 진행 로직을 두면 하네스가 검사하는 것과 사람이 하는 것이 달라진다.
+//
+// 반환 { ok, gained, spawned, justWon, over }
+//   ok=false 는 "그 방향으로는 아무것도 바뀌지 않는다"는 뜻이다. 헛수는 수로 세지 않고
+//   새 타일도 놓지 않는다 — 원작과 같다(어기면 막힌 판에서 타일이 계속 늘어난다).
+function 한수두기(game, dir, rand = Math.random, tune = TUNE) {
+  if (game.over) return { ok: false, gained: 0, spawned: null, justWon: false, over: true };
+
+  const before = maxTile(game.grid);
+  const { moved, gained } = slideGrid(game.grid, dir, tune);
+  if (!moved) return { ok: false, gained: 0, spawned: null, justWon: false, over: false };
+
+  game.moves += 1;
+  game.score += gained;
+  // 합친 횟수를 정확히 세려면 합성 하나하나를 봐야 하지만, 얻은 점수만으로도
+  // "합성이 일어난 수"는 셀 수 있다. 하네스는 이 값이 아니라 점수·합을 검사한다.
+  if (gained > 0) game.merges += 1;
+
+  const spawned = spawnTile(game.grid, rand, tune);
+  if (spawned) game.spawnSum += spawned.value;
+
+  // 목표를 처음 만든 순간. 원작처럼 계속할 수 있으므로 판을 끝내지는 않는다.
+  let justWon = false;
+  if (!game.won && before < tune.WIN && maxTile(game.grid) >= tune.WIN) {
+    game.won = true;
+    justWon = true;
+  }
+
+  if (!canMove(game.grid, tune)) game.over = true;
+  return { ok: true, gained, spawned, justWon, over: game.over };
+}
+
+// 「2048」 판 상태와 저장 — 원작처럼 진행 중인 판까지 저장해 이어서 할 수 있다
+
+
+const KEY = "slide-2048.v1";
+
+// 진행 중인 판. 원작에는 되돌리기가 없으므로 두지 않는다.
+function newGame(rand = Math.random, tune = TUNE) {
+  return {
+    grid: startGrid(rand, tune),
+    score: 0,
+    moves: 0,
+    merges: 0,
+    spawnSum: 0, // 지금까지 새로 놓인 타일 값의 합 (격자 합과 같아야 한다)
+    over: false,
+    won: false, // 목표 값을 만든 적이 있는가
+    keepGoing: false, // 달성 뒤 계속하기를 골랐는가
+  };
+}
+
+// 판을 넘어 남는 것. 원작은 최고 점수만 남기지만 판수·달성 횟수도 함께 둔다.
+function newRecord() {
+  return { best: 0, plays: 0, wins: 0, bestTile: 0 };
+}
+
+const 정수 = (v, 기본) =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 기본;
+
+// 2의 거듭제곱인가 (0은 빈 칸이라 허용).
+// 손댄 저장본이 그대로 들어오면 화면에 없는 색이 나오거나 규칙이 무너진다.
+function 타일값인가(v) {
+  if (v === 0) return true;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 2) return false;
+  return Number.isInteger(Math.log2(v));
+}
+
+function 격자인가(g, tune) {
+  return Array.isArray(g) && g.length === tune.SIZE * tune.SIZE && g.every(타일값인가);
+}
+
+// 저장본을 그대로 믿지 않는다. 판이 이상하면 판만 버리고 기록은 살린다.
+function parseSave(raw, tune = TUNE) {
+  const base = { record: newRecord(), game: null };
+  try {
+    if (!raw) return base;
+    const s = JSON.parse(raw);
+    if (!s || typeof s !== "object" || Array.isArray(s)) return base;
+
+    const r = newRecord();
+    const record = {
+      best: 정수(s.best, r.best),
+      plays: 정수(s.plays, r.plays),
+      wins: 정수(s.wins, r.wins),
+      bestTile: 정수(s.bestTile, r.bestTile),
+    };
+
+    let game = null;
+    if (s.game && typeof s.game === "object" && 격자인가(s.game.grid, tune)) {
+      game = {
+        grid: s.game.grid.slice(),
+        score: 정수(s.game.score, 0),
+        moves: 정수(s.game.moves, 0),
+        merges: 정수(s.game.merges, 0),
+        spawnSum: 정수(s.game.spawnSum, 0),
+        over: s.game.over === true,
+        won: s.game.won === true,
+        keepGoing: s.game.keepGoing === true,
+      };
+    }
+    return { record, game };
+  } catch {
+    return base;
+  }
+}
+
+function loadSave(tune = TUNE) {
+  try {
+    return parseSave(localStorage.getItem(KEY), tune);
+  } catch {
+    return { record: newRecord(), game: null }; // 읽기 자체가 막힌 경우(사생활 보호 모드 등)
+  }
+}
+
+function saveAll(record, game) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ ...record, game }));
+  } catch {
+    // 저장이 막혀도 게임은 계속 돌아야 한다
+  }
+}
+
+// 판이 끝났을 때 기록을 갱신한다.
+function commit(record, game) {
+  record.plays += 1;
+  if (game.score > record.best) record.best = game.score;
+  if (game.won) record.wins += 1;
+  const 최고 = maxTile(game.grid);
+  if (최고 > record.bestTile) record.bestTile = 최고;
+  return record;
+}
+
+const STORAGE_KEY = KEY;
+
+// 「2048」 화면 그리기 — 규칙을 판단하지 않고 받은 상태를 그대로 그린다
+
+
+// 칸은 한 번만 만들고 이후에는 내용만 갈아 끼운다.
+// 매번 새로 만들면 스와이프 도중에 요소가 교체돼 입력이 씹힌다(「째깍벨트」에서 배운 것).
+function 칸만들기(wrap, tune = TUNE) {
+  const 개수 = tune.SIZE * tune.SIZE;
+  if (wrap.childElementCount === 개수) return;
+  wrap.innerHTML = "";
+  wrap.style.gridTemplateColumns = `repeat(${tune.SIZE}, 1fr)`;
+  for (let i = 0; i < 개수; i++) {
+    const cell = document.createElement("div");
+    cell.className = "tile empty";
+    wrap.appendChild(cell);
+  }
+}
+
+// 값 → 단계. 색은 단계로 정하고, 준비한 단계를 넘으면 마지막 단계를 계속 쓴다.
+// 🔴 색만으로 구분하지 않는다 — 이 게임은 칸마다 숫자가 찍히므로 두 번째 축이 이미 있다.
+const 최대단계 = 11; // 2^11 = 2048
+function 단계(v) {
+  if (!v) return 0;
+  return Math.min(최대단계, Math.round(Math.log2(v)));
+}
+
+function renderGrid(wrap, grid, tune = TUNE) {
+  칸만들기(wrap, tune);
+  for (let i = 0; i < grid.length; i++) {
+    const cell = wrap.children[i];
+    const v = grid[i];
+    const 새클래스 = v ? `tile t${단계(v)}${v >= 10000 ? " long" : v >= 1000 ? " wide" : ""}` : "tile empty";
+    if (cell.className !== 새클래스) cell.className = 새클래스;
+    const 글 = v ? String(v) : "";
+    if (cell.textContent !== 글) cell.textContent = 글;
+  }
+}
+
+function renderStatus(els, game, record) {
+  els.score.textContent = game.score.toLocaleString("ko-KR");
+  els.best.textContent = record.best.toLocaleString("ko-KR");
+  els.moves.textContent = `${game.moves.toLocaleString("ko-KR")}수`;
+  // 「최고」는 최고 점수에만 쓴다. 여기까지 「최고」라고 하면 두 값이 같은 말로 보인다.
+  const 최고 = maxTile(game.grid);
+  els.top.textContent = 최고 ? `타일 ${최고.toLocaleString("ko-KR")}` : "";
+}
+
+// 판이 끝났을 때와 목표를 만들었을 때 둘 다 이 덮개를 쓴다.
+// 이긴 경우에는 원작처럼 계속할 수 있어야 하므로 버튼이 하나 더 붙는다.
+function showOver(els, game, record, tune = TUNE) {
+  const 이김 = game.won && !game.over;
+  els.overTitle.textContent = 이김 ? `${tune.WIN.toLocaleString("ko-KR")} 달성` : "더 움직일 수 없습니다";
+  els.overText.innerHTML =
+    `${game.score.toLocaleString("ko-KR")}점 · ${game.moves.toLocaleString("ko-KR")}수 · 최고 타일 ${maxTile(game.grid).toLocaleString("ko-KR")}` +
+    (!game.over && 이김 ? "<br>계속해서 더 큰 타일을 노려 보십시오." : "") +
+    (game.over && game.score >= record.best && game.score > 0 ? "<br><em>새 기록입니다</em>" : "");
+  els.keep.hidden = !이김;
+  els.over.hidden = false;
+}
+
+function hideOver(els) {
+  els.over.hidden = true;
+}
+
+// 알림은 자기 줄(고정 높이)에 둔다 — 떠 있는 알림은 아래 내용을 가리고 높이를 밀어낸다.
+function toast(el, message, 좋음 = false) {
+  el.textContent = message;
+  el.classList.toggle("good", 좋음);
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 1400);
+}
+
+// 「2048」 입력 — 스와이프와 방향키를 방향 이름으로 바꿔 준다
+
+// 🔴 손을 뗄 때(pointerup)가 아니라 **방향이 분명해지는 순간**(pointermove) 처리한다.
+// 손을 뗄 때까지 기다리면 "밀었는데 한 박자 늦게 움직이는" 느낌이 된다.
+// 한 번 처리한 뒤에는 손을 뗄 때까지 잠가서 한 번의 스와이프가 두 수로 새지 않게 한다.
+const 최소거리 = 24; // 이만큼 움직여야 스와이프로 본다(px). 더 짧으면 탭이 방향으로 오인된다
+
+function 스와이프연결(el, 처리) {
+  let 시작 = null;
+  let 잠금 = false;
+
+  el.addEventListener("pointerdown", (e) => {
+    시작 = { x: e.clientX, y: e.clientY };
+    잠금 = false;
+  });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!시작 || 잠금) return;
+    const dx = e.clientX - 시작.x;
+    const dy = e.clientY - 시작.y;
+    if (Math.abs(dx) < 최소거리 && Math.abs(dy) < 최소거리) return;
+    // 더 많이 움직인 축을 방향으로 삼는다. 대각선으로 그어도 하나로 정해진다.
+    잠금 = true;
+    처리(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
+  });
+
+  const 끝 = () => {
+    시작 = null;
+    잠금 = false;
+  };
+  el.addEventListener("pointerup", 끝);
+  el.addEventListener("pointercancel", 끝);
+  el.addEventListener("pointerleave", 끝);
+}
+
+const 키맵 = {
+  ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+  a: "left", d: "right", w: "up", s: "down",
+  A: "left", D: "right", W: "up", S: "down",
+};
+
+function 키연결(처리) {
+  window.addEventListener("keydown", (e) => {
+    // 버튼에 초점이 있을 때 Space·Enter까지 가로채면 버튼을 못 누른다
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const dir = 키맵[e.key];
+    if (!dir) return;
+    e.preventDefault(); // 방향키로 화면이 스크롤되는 것을 막는다
+    처리(dir);
+  });
+}
+
+// 「2048」 입력과 규칙과 화면을 잇는다 (진입점)
+
+
+
+
+
+const els = {
+  board: document.getElementById("board"),
+  score: document.getElementById("score"),
+  best: document.getElementById("best"),
+  moves: document.getElementById("moves"),
+  top: document.getElementById("top"),
+  over: document.getElementById("over"),
+  overTitle: document.getElementById("over-title"),
+  overText: document.getElementById("over-text"),
+  again: document.getElementById("again"),
+  keep: document.getElementById("keep"),
+  restart: document.getElementById("restart"),
+  toast: document.getElementById("toast"),
+};
+
+const 저장 = loadSave(TUNE);
+const record = 저장.record || newRecord();
+// 원작처럼 진행 중이던 판을 이어서 한다. 저장본이 없거나 이상하면 새 판이다.
+let game = 저장.game || newGame(Math.random, TUNE);
+
+function 그리기() {
+  renderGrid(els.board, game.grid, TUNE);
+  renderStatus(els, game, record);
+}
+
+function 남기기() {
+  saveAll(record, game);
+}
+
+function 새판() {
+  game = newGame(Math.random, TUNE);
+  hideOver(els);
+  그리기();
+  남기기();
+}
+
+function 움직이기(dir) {
+  if (game.over) return;
+  // 달성 안내가 떠 있는 동안에는 판이 뒤에서 움직이지 않게 막는다
+  if (!els.over.hidden) return;
+
+  const r = 한수두기(game, dir, Math.random, TUNE);
+  if (!r.ok) return; // 그 방향으로는 아무것도 바뀌지 않는다 — 헛수는 세지 않는다
+
+  그리기();
+
+  if (r.over) {
+    commit(record, game);
+    남기기();
+    showOver(els, game, record, TUNE);
+    return;
+  }
+  if (r.justWon) {
+    남기기();
+    showOver(els, game, record, TUNE);
+    return;
+  }
+  남기기();
+}
+
+스와이프연결(els.board, 움직이기);
+키연결(움직이기);
+
+els.again.addEventListener("click", 새판);
+els.restart.addEventListener("click", 새판);
+
+// 원작과 같이 목표를 만든 뒤에도 계속할 수 있다
+els.keep.addEventListener("click", () => {
+  game.keepGoing = true;
+  hideOver(els);
+  남기기();
+  toast(els.toast, "계속합니다", true);
+});
+
+그리기();
+// 이어서 하는 판이 이미 끝나 있었다면 안내를 다시 띄운다
+if (game.over) showOver(els, game, record, TUNE);
+</script>
+</body>
+</html>

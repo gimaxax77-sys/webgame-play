@@ -125,6 +125,26 @@ h1 {
 .pip.s-square { background: #f0b429; border-radius: 4px; }
 .pip.s-tri { background: #5ad46a; clip-path: polygon(50% 2%, 100% 100%, 0 100%); }
 
+/* 「2048」 — 4×4. 색 단계는 games/slide-2048/style.css 와 같은 값 */
+/* 다른 미리보기(150px)와 크기를 맞춘다. 4×4라 조금 더 주되 아이콘 범위를 넘지 않게 한다. */
+.thumb-2048 { grid-template-columns: repeat(4, 1fr); width: 100%; max-width: 180px; gap: 4px; }
+.num {
+  display: grid; place-items: center;
+  aspect-ratio: 1;
+  border-radius: 7px;
+  font-size: .62rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: #22262f;
+}
+.num.n2   { background: #333b49; }
+.num.n4   { background: #3f4d66; }
+.num.n8   { background: #1d6b93; }
+.num.n16  { background: #1a8b86; }
+.num.n32  { background: #2c9b57; }
+.num.n64  { background: #7ba32b; color: #12141a; }
+.num.n128 { background: #c39b1e; color: #12141a; }
+
 /* ── 꼬리 ─────────────────────────────── */
 .site-foot {
   margin-top: 24px;
@@ -140,4 +160,5 @@ h1 {
   .thumb { align-self: start; }
   .thumb-merge { width: 168px; }
   .thumb-belt { width: 200px; max-width: none; }
+  .thumb-2048 { width: 168px; max-width: none; }
 }
