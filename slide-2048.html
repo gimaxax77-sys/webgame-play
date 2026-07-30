@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>2048 — 밀어서 합치기</title>
-<meta name="description" content="같은 숫자를 밀어 붙여 2048을 만드는 퍼즐. 설치 없이 브라우저에서 바로.">
+<meta name="description" content="같은 숫자를 밀어 붙여 2048을 만드는 퍼즐. 아이템·영구 스킬·판 크기 선택까지. 설치 없이 브라우저에서 바로.">
 <style>
 /* 「2048」 화면 스타일 — 모바일 세로 우선, 외부 폰트·라이브러리 없음 */
 
@@ -107,6 +107,11 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; 
   gap: var(--gap);
   padding: var(--gap);
   aspect-ratio: 1;
+  /* 🔴 행 높이를 내용이 아니라 판이 정하게 한다.
+     이게 없으면 판 높이만 고정(aspect-ratio)되고 행은 내용에 맞춰 나뉘어,
+     1000 이상이라 글자를 줄인 줄만 낮아져 칸이 직사각형이 된다
+     (실측: 폭 77 고정인데 높이가 79 / 71로 갈렸다. 2026-07-31 Gim이 실기기에서 발견). */
+  grid-auto-rows: 1fr;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -117,6 +122,8 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; 
 
 .tile {
   display: grid; place-items: center;
+  /* 글자가 칸 크기를 밀어내지 못하게 못 박는다 — 위 grid-auto-rows 와 한 쌍이다 */
+  min-width: 0; min-height: 0; overflow: hidden;
   border-radius: 10px;
   font-size: 1.6rem; font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -168,7 +175,61 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; 
 .ghost:hover { border-color: var(--accent); }
 .primary:active, .ghost:active { transform: scale(.97); }
 
-.howto-hint { margin: 10px 0 0; font-size: .74rem; color: var(--dim); text-align: center; }
+.howto-hint { margin: 10px 0 6px; font-size: .74rem; color: var(--dim); text-align: center; }
+
+/* 판 크기 고르기 — 「한칸만더」의 갱도 고르기와 같은 방식 */
+.pick { gap: 8px; }
+.pick-warn { font-size: .72rem; }
+.pick-warn em { color: var(--accent); font-style: normal; }
+.size-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 300px; }
+.size-opt {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
+  align-items: center; text-align: left;
+  padding: 8px 12px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.size-opt:hover { border-color: var(--accent); }
+.size-opt:active { transform: scale(.98); }
+.size-opt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.size-n { grid-row: span 3; font-size: 1.05rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.size-name { font-size: .78rem; }
+.size-desc { font-size: .64rem; color: var(--dim); }
+.size-best { font-size: .64rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+/* ── 창고·공방 ─────────────────────────── */
+.panel { flex: 0 0 auto; margin-top: 8px; }
+.panel h2 {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .74rem; margin: 0 0 4px; color: var(--dim); font-weight: 600;
+}
+.panel h2 .hint { font-size: .64rem; opacity: .7; font-weight: 400; }
+.panel h2 .parts { margin-left: auto; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+/* 게이지 — 몇 번 더 합성하면 아이템을 받는지 */
+.gauge { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
+.gauge-bar { display: block; width: 52px; height: 5px; background: #22262f; border-radius: 999px; overflow: hidden; }
+.gauge-bar > span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .2s; }
+.gauge-num { font-size: .62rem; opacity: .75; font-variant-numeric: tabular-nums; }
+
+.shops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.shop {
+  display: grid; grid-template-rows: auto auto auto; gap: 1px;
+  align-items: center; justify-items: center;
+  padding: 6px 4px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.shop-icon { font-size: 1.05rem; line-height: 1.2; }
+.shop-name { font-size: .68rem; }
+.shop-sub { font-size: .64rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* 쓸 수 있는 것은 테두리로 알린다 — 개수 글자만으로는 눈에 안 들어온다 */
+.shop.has { border-color: var(--accent); }
+.shop.has .shop-sub { color: var(--accent); }
+.shop.buying .shop-sub { color: var(--accent); }
+.shop.maxed .shop-sub { color: var(--dim); }
+.shop:disabled { opacity: .42; cursor: default; }
+.shop:active:not(:disabled) { transform: scale(.96); }
 
 /* 규칙 */
 .howto { margin-top: 10px; font-size: .74rem; color: var(--dim); }
@@ -181,7 +242,10 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; 
 </head>
 <body>
 <header class="topbar">
-  <div class="topleft"></div>
+  <div class="topleft">
+    <!-- 판 크기 선택은 「한칸만더」의 갱도 버튼과 같은 자리·같은 방식이다(Gim 지시) -->
+    <button type="button" id="size-btn" class="topbtn">4×4</button>
+  </div>
   <h1>2048</h1>
   <div class="topright">
     <button type="button" id="restart" class="topbtn">새 판</button>
@@ -216,9 +280,32 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; 
         <button type="button" id="again" class="primary">새 판</button>
       </div>
     </div>
+
+    <div id="size-pick" class="over pick" hidden>
+      <strong>판 크기를 고르십시오</strong>
+      <p class="pick-warn">바꾸면 <em>지금 판은 끝나고</em> 새 판이 시작됩니다. 최고 점수는 크기마다 따로 남습니다.</p>
+      <div id="size-list" class="size-list"></div>
+      <button type="button" id="size-close" class="ghost">닫기</button>
+    </div>
   </section>
 
   <p class="howto-hint">화면을 <strong>쓸어서</strong> 움직입니다. 키보드는 방향키·WASD.</p>
+
+  <section class="panel">
+    <h2>
+      창고 <span class="hint" id="items-hint">눌러서 씁니다</span>
+      <span class="gauge" aria-label="아이템 게이지">
+        <span class="gauge-bar"><span id="gauge-fill"></span></span>
+        <span class="gauge-num" id="gauge-num">0/12</span>
+      </span>
+    </h2>
+    <div id="items" class="shops"></div>
+  </section>
+
+  <section class="panel">
+    <h2>공방 <span class="hint" id="skills-hint">판이 끝난 뒤 올립니다</span> <span class="parts" id="parts">◈ 0</span></h2>
+    <div id="skills" class="shops"></div>
+  </section>
 
   <details class="howto">
     <summary>규칙 보기</summary>
@@ -229,25 +316,50 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .16em; white-space: nowrap; 
       <li>한 번 움직일 때마다 빈 칸에 <strong>2</strong>가 하나 생깁니다(가끔 4).</li>
       <li>아무 방향으로도 움직일 수 없으면 그 판은 끝입니다.</li>
       <li><strong>2048</strong>을 만들면 달성입니다. 원한다면 계속해서 더 큰 타일을 노릴 수 있습니다.</li>
-      <li>진행 중인 판과 최고 점수는 이 브라우저에 저장되어 다음에 이어서 할 수 있습니다.</li>
+      <li><strong>창고</strong>의 아이템은 <strong>판이 진행 중일 때만</strong> 씁니다. 판을 시작할 때 각 1개는 늘 보장되고, 일정 횟수 합성할 때마다 하나를 더 받습니다.</li>
+      <li>판이 끝나면 점수의 <strong>10%가 조각</strong>이 됩니다. 조각으로 아이템을 더 사거나 <strong>공방</strong>에서 영구 스킬을 올립니다.</li>
+      <li>판 크기는 왼쪽 위 버튼에서 <strong>3×3 · 4×4 · 5×5</strong> 중 고릅니다. 최고 점수는 크기마다 따로 남습니다.</li>
+      <li>진행 중인 판·기록·조각·재고·스킬은 이 브라우저에 저장됩니다.</li>
     </ul>
-    <p class="credit">규칙은 Gabriele Cirulli의 2048(2014, MIT)과 같습니다. 코드는 이 저장소에서 새로 작성했습니다.</p>
+    <p class="credit">밀고 합치는 규칙은 Gabriele Cirulli의 2048(2014, MIT)과 같습니다. 아이템·스킬·판 크기 선택은 이 저장소에서 더한 것이고, 코드는 새로 작성했습니다.</p>
   </details>
 </main>
 <script type="module">
 // 「2048」 조율값 — 값의 출처를 한 곳에만 둔다. 규칙 함수는 이 표를 인자로 받는다
 
-// 원작(Gabriele Cirulli, 2014)과 같은 값이다. Gim 지시가 "2048과 동일한 게임"이므로
-// 밸런스를 임의로 손보지 않았다. 바꿀 일이 생기면 시뮬레이션으로 재고 근거를 남긴다.
+// 밀기·합치기 규칙과 확률은 원작(Gabriele Cirulli, 2014)과 같은 값이다.
+// 🔴 다만 아이템·스킬·판 크기 선택은 Gim 지시로 **원작에 없는 것을 더한 것**이다(2026-07-31).
+// 규칙 자체(합치는 방식·점수)는 그대로 두었다.
 const TUNE = {
-  SIZE: 4, // 판 한 변의 칸 수
+  SIZE: 4, // 판 한 변의 칸 수 — 판 크기 선택으로 바뀐다
   START_TILES: 2, // 판을 시작할 때 놓는 타일 수
-  SPAWN_4_RATE: 0.1, // 새 타일이 4로 나올 확률 (나머지는 2)
+  SPAWN_4_RATE: 0.1, // 새 타일이 4로 나올 확률 (나머지는 2) — 「느린 4」 스킬이 낮춘다
   WIN: 2048, // 이 값을 만들면 달성. 원작처럼 계속할 수 있다
+  GAUGE_NEED: 12, // 이만큼 합성하면 아이템 하나를 받는다 — 「빠른 보급」 스킬이 줄인다
+  FREE_UNDO: 1, // 판을 시작할 때 보장되는 「무르기」 개수 — 「무르기 여유」 스킬이 늘린다
+  PARTS_RATE: 0.1, // 판이 끝나면 점수의 이만큼이 조각이 된다
 };
 
-// 타일이 움직이는 방향. 이 순서는 "막혔는지" 검사에서만 쓰이므로 의미는 없다.
+// 타일이 움직이는 방향. 순서 자체에 의미는 없다(막힘 검사에서만 쓴다).
 const DIRS = ["left", "right", "up", "down"];
+
+// 고를 수 있는 판 크기. 설명의 수치는 100만 판 스트레스에서 나온 실측이다(감으로 적지 않았다).
+const SIZES = [
+  { size: 3, name: "좁은 판", desc: "한 판이 아주 짧습니다 · 2048은 사실상 불가" },
+  { size: 4, name: "기본 판", desc: "원작과 같은 크기" },
+  { size: 5, name: "넓은 판", desc: "판이 길고 2048까지 갈 여유가 큽니다" },
+];
+
+const DEFAULT_SIZE = 4;
+
+function isValidSize(n) {
+  return SIZES.some((s) => s.size === n);
+}
+
+// 저장본이 깨졌거나 아직 고르지 않았어도 게임은 돌아야 하므로 기본값으로 떨어진다
+function sizeOf(record) {
+  return record && isValidSize(record.size) ? record.size : DEFAULT_SIZE;
+}
 
 // 「2048」 격자 규칙 — 밀기·합치기·새 타일. 화면을 전혀 모른다
 
@@ -403,27 +515,396 @@ function startGrid(rand = Math.random, tune = TUNE) {
   return grid;
 }
 
+// 「2048」 소모성 아이템 — 판 중에 눌러 쓴다. 얻는 길이 셋이다(판 시작 무료 · 게이지 · 조각 구매)
+
+
+// 값은 판당 조각 수입(점수의 10% — 기본 판에서 대략 100~250)을 기준으로 잡았다.
+// 한 판 수입으로 한두 개를 사는 정도이고, 스킬(수백~수천)과는 자리가 다르다.
+// ⚠️ 스킬과 달리 아이템 효과는 시뮬레이션으로 재지 않았다 — 봇 정책이 쓰는 빈도가 사람과 다르다.
+const ITEMS = [
+  { id: "undo", name: "무르기", icon: "↩", cost: 250, 설명: "직전 한 수를 되돌립니다" },
+  { id: "erase", name: "지우기", icon: "✖", cost: 400, 설명: "가장 작은 타일 하나를 없앱니다" },
+  { id: "shuffle", name: "뒤섞기", icon: "🔀", cost: 300, 설명: "타일을 무작위로 다시 놓습니다" },
+];
+
+function itemById(id) {
+  return ITEMS.find((i) => i.id === id) || null;
+}
+
+// 판을 시작할 때 각 아이템이 최소 개수만큼 되도록 보충한다.
+// 사 둔 재고는 그 위에 그대로 남는다(구매가 무의미해지지 않게).
+function 판시작보충(stock, tune = TUNE) {
+  for (const it of ITEMS) {
+    const 최소 = it.id === "undo" ? tune.FREE_UNDO : 1;
+    if (!(stock[it.id] >= 최소)) stock[it.id] = 최소;
+  }
+  return stock;
+}
+
+// 합성 한 번을 게이지에 적립한다. 다 차면 무작위 아이템 id를 돌려주고 게이지를 비운다.
+function 게이지적립(game, rand = Math.random, tune = TUNE) {
+  game.charge = (game.charge || 0) + 1;
+  if (game.charge < tune.GAUGE_NEED) return null;
+  game.charge = 0;
+  return ITEMS[Math.floor(rand() * ITEMS.length)].id;
+}
+
+// 아이템을 쓴다. 규칙만 건드리고 화면은 모른다.
+// 🔴 판이 끝난 뒤에는 쓸 수 없다 — 끝난 판은 이미 기록에 반영됐으므로 되살리면 판수가 두 번 세어진다.
+// 반환 { ok, why }
+function useItem(id, game, rand = Math.random, tune = TUNE) {
+  const it = itemById(id);
+  if (!it) return { ok: false, why: "없는 아이템입니다" };
+  if (game.over) return { ok: false, why: "끝난 판에는 쓸 수 없습니다" };
+  if (!(game.stock[id] > 0)) return { ok: false, why: "남은 개수가 없습니다" };
+
+  let r;
+  if (id === "undo") r = 무르기(game);
+  else if (id === "erase") r = 지우기(game);
+  else r = 뒤섞기(game, rand);
+
+  if (r.ok) {
+    game.stock[id] -= 1;
+    // 🔴 아이템이 판을 막아 버릴 수 있다 — 꽉 찬 판을 「뒤섞기」로 흩으면
+    // 맞닿은 같은 값이 하나도 없는 배치가 나올 수 있다. 여기서 다시 보지 않으면
+    // 죽은 판이 살아 있는 척하고 그 뒤로는 어느 방향도 먹지 않는다.
+    if (!canMove(game.grid, tune)) game.over = true;
+  }
+  return r;
+}
+
+// 직전 한 수를 통째로 되돌린다. 스냅샷을 하나만 두므로 연달아 두 번은 못 무른다.
+function 무르기(game) {
+  const p = game.prev;
+  if (!p) return { ok: false, why: "되돌릴 수가 없습니다" };
+  game.grid = p.grid.slice();
+  game.score = p.score;
+  game.moves = p.moves;
+  game.merges = p.merges;
+  game.spawnSum = p.spawnSum;
+  game.removedSum = p.removedSum;
+  game.charge = p.charge;
+  game.prev = null; // 한 번 되돌리면 그 앞은 없다
+  return { ok: true, why: null };
+}
+
+// 가장 작은 타일 하나를 없앤다. 쌓인 2를 치우는 용도다.
+// 🔴 이것만 격자의 합을 줄인다. 없앤 값을 따로 세어 두어야 합 항등식이 유지된다.
+function 지우기(game) {
+  let at = -1;
+  let 최소 = Infinity;
+  for (let i = 0; i < game.grid.length; i++) {
+    const v = game.grid[i];
+    if (v !== 0 && v < 최소) { 최소 = v; at = i; }
+  }
+  if (at < 0) return { ok: false, why: "지울 타일이 없습니다" };
+  const 남은타일 = game.grid.filter((v) => v !== 0).length;
+  if (남은타일 <= 1) return { ok: false, why: "타일이 하나뿐입니다" };
+  game.grid[at] = 0;
+  game.removedSum += 최소;
+  return { ok: true, why: null };
+}
+
+// 값은 그대로 두고 자리만 섞는다. 합이 변하지 않으므로 항등식에 영향이 없다.
+function 뒤섞기(game, rand) {
+  const 값들 = game.grid.filter((v) => v !== 0);
+  if (값들.length < 2) return { ok: false, why: "섞을 타일이 없습니다" };
+  // 꽉 찬 판을 섞어도 칸 수는 그대로지만 이웃이 달라져 길이 열릴 수 있으므로 막지 않는다.
+  // 피셔–예이츠. 자리 목록을 섞어 값들을 앞에서부터 채운다.
+  const 자리 = game.grid.map((_, i) => i);
+  for (let i = 자리.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [자리[i], 자리[j]] = [자리[j], 자리[i]];
+  }
+  game.grid.fill(0);
+  for (let k = 0; k < 값들.length; k++) game.grid[자리[k]] = 값들[k];
+  return { ok: true, why: null };
+}
+
+// 조각으로 재고를 한 개 산다.
+function buyItem(record, id) {
+  const it = itemById(id);
+  if (!it) return { ok: false, why: "없는 아이템입니다" };
+  if (record.parts < it.cost) return { ok: false, why: `조각 ${it.cost - record.parts}개가 더 필요합니다` };
+  record.parts -= it.cost;
+  record.stock[id] = (record.stock[id] || 0) + 1;
+  return { ok: true, cost: it.cost };
+}
+
+// 「2048」 영구 스킬 — 조각으로 레벨을 올리면 판의 규칙값(조율표)이 바뀐다
+
+// 🔴 조율표를 바꾸는 스킬만 둔다. "점수 두 배" 같은 것은 기록을 서로 비교할 수 없게 만든다.
+// 값은 판당 조각 수입(기본 판에서 대략 100~250)을 기준으로, 만렙까지 수십 판이 걸리게 잡았다.
+// max는 레벨 상한이고 cost[lv]는 lv에서 lv+1로 올리는 값이다.
+const SKILLS = [
+  {
+    id: "undoStock",
+    name: "무르기 여유",
+    icon: "↩",
+    max: 2,
+    cost: [1200, 4000],
+    설명: (lv) => `판 시작 무르기 ${TUNE.FREE_UNDO + lv}개`,
+  },
+  {
+    id: "slow4",
+    name: "느린 4",
+    icon: "🐢",
+    max: 3,
+    cost: [800, 2000, 5000],
+    // 4가 섞이면 짝을 맞추기 어려워진다. 확률을 낮추는 것이 곧 판을 길게 만드는 것이다.
+    설명: (lv) => `4가 나올 확률 ${Math.round((TUNE.SPAWN_4_RATE - 0.02 * lv) * 100)}%`,
+  },
+  {
+    id: "supply",
+    name: "빠른 보급",
+    icon: "📦",
+    max: 2,
+    cost: [1500, 5000],
+    설명: (lv) => `합성 ${TUNE.GAUGE_NEED - 2 * lv}번마다 아이템`,
+  },
+];
+
+function skillById(id) {
+  return SKILLS.find((s) => s.id === id) || null;
+}
+
+// ⚠️ 이름은 게임 전체에서 고유해야 한다 — 빌드가 모든 모듈을 한 스코프로 합친다.
+function skillLevel(levels, id) {
+  const v = levels && levels[id];
+  const s = skillById(id);
+  if (!s || typeof v !== "number" || !Number.isFinite(v) || v < 0) return 0;
+  return Math.min(s.max, Math.floor(v));
+}
+
+// 다음 레벨 값. 이미 상한이면 null(더 올릴 수 없다는 뜻).
+function skillNextCost(levels, id) {
+  const s = skillById(id);
+  if (!s) return null;
+  const lv = skillLevel(levels, id);
+  if (lv >= s.max) return null;
+  return s.cost[lv];
+}
+
+// 스킬 레벨을 판의 조율표로 바꾼다. 규칙 모듈은 이 표만 보고 돌아간다.
+// 🔴 판을 시작할 때 한 번만 부른다 — 판 도중에 규칙값이 바뀌면 판이 뒤틀린다.
+function tuneFor(levels, base = TUNE, size = base.SIZE) {
+  return {
+    ...base,
+    SIZE: size,
+    SPAWN_4_RATE: Math.max(0, base.SPAWN_4_RATE - 0.02 * skillLevel(levels, "slow4")),
+    GAUGE_NEED: Math.max(1, base.GAUGE_NEED - 2 * skillLevel(levels, "supply")),
+    FREE_UNDO: base.FREE_UNDO + skillLevel(levels, "undoStock"),
+  };
+}
+
+function buySkill(record, id) {
+  const s = skillById(id);
+  if (!s) return { ok: false, why: "없는 스킬입니다" };
+  const cost = skillNextCost(record.skills, id);
+  if (cost === null) return { ok: false, why: "이미 최고 단계입니다" };
+  if (record.parts < cost) return { ok: false, why: `조각 ${cost - record.parts}개가 더 필요합니다` };
+  record.parts -= cost;
+  record.skills[id] = skillLevel(record.skills, id) + 1;
+  return { ok: true, cost, level: record.skills[id] };
+}
+
+// 「2048」 판 상태와 저장 — 원작처럼 진행 중인 판까지 저장해 이어서 할 수 있다
+
+
+
+
+const KEY = "slide-2048.v1";
+
+// 진행 중인 판.
+// stock 은 기록의 것을 그대로 가리킨다 — 아이템을 쓰면 그 자리에서 재고가 줄어야 한다.
+function newGame(rand = Math.random, tune = TUNE, stock = {}) {
+  판시작보충(stock, tune);
+  return {
+    grid: startGrid(rand, tune),
+    stock,
+    score: 0,
+    moves: 0,
+    merges: 0,
+    charge: 0, // 아이템 게이지 (합성 횟수 적립)
+    spawnSum: 0, // 지금까지 새로 놓인 타일 값의 합
+    removedSum: 0, // 「지우기」로 없앤 값의 합
+    prev: null, // 「무르기」용 직전 스냅샷 (하나만 둔다)
+    over: false,
+    won: false,
+    keepGoing: false,
+  };
+}
+
+// 판을 넘어 남는 것. 최고 점수는 **판 크기별로** 따로 둔다 — 크기가 다르면 비교가 안 된다.
+function newRecord() {
+  return {
+    bests: { 3: 0, 4: 0, 5: 0 },
+    plays: 0, wins: 0, bestTile: 0,
+    parts: 0, stock: {}, skills: {},
+    size: DEFAULT_SIZE,
+  };
+}
+
+const 정수 = (v, 기본) =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 기본;
+
+// 2의 거듭제곱인가 (0은 빈 칸이라 허용).
+function 타일값인가(v) {
+  if (v === 0) return true;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 2) return false;
+  return Number.isInteger(Math.log2(v));
+}
+
+function 격자인가(g, size) {
+  return Array.isArray(g) && g.length === size * size && g.every(타일값인가);
+}
+
+// id → 숫자 표만 남긴다. 정의에 없는 id와 이상한 값은 버린다.
+function 숫자표(값, 허용id, 상한) {
+  const out = {};
+  if (값 && typeof 값 === "object" && !Array.isArray(값)) {
+    for (const [k, v] of Object.entries(값)) {
+      if (!허용id.includes(k)) continue;
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) continue;
+      const n = Math.floor(v);
+      out[k] = 상한 ? Math.min(n, 상한(k)) : n;
+    }
+  }
+  return out;
+}
+
+// 손댄 저장본을 그대로 믿지 않는다. 판이 이상하면 판만 버리고 기록은 살린다.
+function parseSave(raw, base = TUNE) {
+  const 기본 = { record: newRecord(), game: null };
+  try {
+    if (!raw) return 기본;
+    const s = JSON.parse(raw);
+    if (!s || typeof s !== "object" || Array.isArray(s)) return 기본;
+
+    const r = newRecord();
+    const bests = { ...r.bests };
+    if (s.bests && typeof s.bests === "object" && !Array.isArray(s.bests)) {
+      for (const sz of SIZES.map((x) => x.size)) bests[sz] = 정수(s.bests[sz], 0);
+    }
+
+    const record = {
+      bests,
+      plays: 정수(s.plays, r.plays),
+      wins: 정수(s.wins, r.wins),
+      bestTile: 정수(s.bestTile, r.bestTile),
+      parts: 정수(s.parts, r.parts),
+      stock: 숫자표(s.stock, ITEMS.map((i) => i.id)),
+      // 스킬은 상한이 있다. 저장본이 999라고 적혀 있어도 규칙이 무너지면 안 된다.
+      skills: 숫자표(s.skills, SKILLS.map((k) => k.id), (id) => SKILLS.find((k) => k.id === id).max),
+      size: isValidSize(s.size) ? s.size : DEFAULT_SIZE,
+    };
+
+    let game = null;
+    if (s.game && typeof s.game === "object" && 격자인가(s.game.grid, record.size)) {
+      game = {
+        grid: s.game.grid.slice(),
+        stock: record.stock, // 같은 객체를 가리켜야 아이템을 쓰면 재고가 준다
+        score: 정수(s.game.score, 0),
+        moves: 정수(s.game.moves, 0),
+        merges: 정수(s.game.merges, 0),
+        charge: 정수(s.game.charge, 0),
+        spawnSum: 정수(s.game.spawnSum, 0),
+        removedSum: 정수(s.game.removedSum, 0),
+        prev: null, // 되돌리기 스냅샷은 저장하지 않는다(껐다 켜서 무르는 것은 막는다)
+        over: s.game.over === true,
+        won: s.game.won === true,
+        keepGoing: s.game.keepGoing === true,
+      };
+    }
+    return { record, game };
+  } catch {
+    return 기본;
+  }
+}
+
+function loadSave(base = TUNE) {
+  try {
+    return parseSave(localStorage.getItem(KEY), base);
+  } catch {
+    return { record: newRecord(), game: null }; // 읽기 자체가 막힌 경우(사생활 보호 모드 등)
+  }
+}
+
+function saveAll(record, game) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ ...record, game: game ? { ...game, prev: null } : null }));
+  } catch {
+    // 저장이 막혀도 게임은 계속 돌아야 한다
+  }
+}
+
+// 판이 끝났을 때 기록을 갱신한다. 얻은 조각 수를 돌려준다.
+function commit(record, game, size, tune = TUNE) {
+  record.plays += 1;
+  if (game.score > (record.bests[size] || 0)) record.bests[size] = game.score;
+  if (game.won) record.wins += 1;
+  const 최고 = maxTile(game.grid);
+  if (최고 > record.bestTile) record.bestTile = 최고;
+  const 조각 = Math.floor(game.score * tune.PARTS_RATE);
+  record.parts += 조각;
+  return 조각;
+}
+
+function bestOf(record, size) {
+  return (record.bests && record.bests[size]) || 0;
+}
+
+// 스킬 레벨 표를 그대로 넘겨받기 쉽게 감싼다(화면이 skills.js를 몰라도 되게)
+function skillLevels(record) {
+  const out = {};
+  for (const s of SKILLS) out[s.id] = skillLevel(record.skills, s.id);
+  return out;
+}
+
+const STORAGE_KEY = KEY;
+
 // 「2048」 한 수 진행 — 밀고·점수 올리고·새 타일 놓고·끝났는지 본다
 
+
+
+// 「무르기」가 쓸 직전 상태. 격자만 복사하면 되고 나머지는 값이라 얕게 담아도 된다.
+function 스냅샷(game) {
+  return {
+    grid: game.grid.slice(),
+    score: game.score,
+    moves: game.moves,
+    merges: game.merges,
+    charge: game.charge,
+    spawnSum: game.spawnSum,
+    removedSum: game.removedSum,
+  };
+}
 
 // 🔴 화면(main.js)과 스트레스 하네스가 **둘 다 이 함수만** 부른다.
 // 각자 따로 진행 로직을 두면 하네스가 검사하는 것과 사람이 하는 것이 달라진다.
 //
-// 반환 { ok, gained, spawned, justWon, over }
+// 반환 { ok, gained, spawned, 받은아이템, justWon, over }
 //   ok=false 는 "그 방향으로는 아무것도 바뀌지 않는다"는 뜻이다. 헛수는 수로 세지 않고
 //   새 타일도 놓지 않는다 — 원작과 같다(어기면 막힌 판에서 타일이 계속 늘어난다).
 function 한수두기(game, dir, rand = Math.random, tune = TUNE) {
-  if (game.over) return { ok: false, gained: 0, spawned: null, justWon: false, over: true };
+  const 없음 = { ok: false, gained: 0, spawned: null, 받은아이템: null, justWon: false };
+  if (game.over) return { ...없음, over: true };
 
   const before = maxTile(game.grid);
+  const 직전 = 스냅샷(game); // 밀기 전에 떠 둔다. 밀기는 격자를 그 자리에서 고친다
   const { moved, gained } = slideGrid(game.grid, dir, tune);
-  if (!moved) return { ok: false, gained: 0, spawned: null, justWon: false, over: false };
+  if (!moved) return { ...없음, over: false };
 
+  game.prev = 직전;
   game.moves += 1;
   game.score += gained;
-  // 합친 횟수를 정확히 세려면 합성 하나하나를 봐야 하지만, 얻은 점수만으로도
-  // "합성이 일어난 수"는 셀 수 있다. 하네스는 이 값이 아니라 점수·합을 검사한다.
-  if (gained > 0) game.merges += 1;
+
+  let 받은아이템 = null;
+  if (gained > 0) {
+    game.merges += 1;
+    받은아이템 = 게이지적립(game, rand, tune);
+    if (받은아이템) game.stock[받은아이템] = (game.stock[받은아이템] || 0) + 1;
+  }
 
   const spawned = spawnTile(game.grid, rand, tune);
   if (spawned) game.spawnSum += spawned.value;
@@ -436,121 +917,21 @@ function 한수두기(game, dir, rand = Math.random, tune = TUNE) {
   }
 
   if (!canMove(game.grid, tune)) game.over = true;
-  return { ok: true, gained, spawned, justWon, over: game.over };
+  return { ok: true, gained, spawned, 받은아이템, justWon, over: game.over };
 }
-
-// 「2048」 판 상태와 저장 — 원작처럼 진행 중인 판까지 저장해 이어서 할 수 있다
-
-
-const KEY = "slide-2048.v1";
-
-// 진행 중인 판. 원작에는 되돌리기가 없으므로 두지 않는다.
-function newGame(rand = Math.random, tune = TUNE) {
-  return {
-    grid: startGrid(rand, tune),
-    score: 0,
-    moves: 0,
-    merges: 0,
-    spawnSum: 0, // 지금까지 새로 놓인 타일 값의 합 (격자 합과 같아야 한다)
-    over: false,
-    won: false, // 목표 값을 만든 적이 있는가
-    keepGoing: false, // 달성 뒤 계속하기를 골랐는가
-  };
-}
-
-// 판을 넘어 남는 것. 원작은 최고 점수만 남기지만 판수·달성 횟수도 함께 둔다.
-function newRecord() {
-  return { best: 0, plays: 0, wins: 0, bestTile: 0 };
-}
-
-const 정수 = (v, 기본) =>
-  typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 기본;
-
-// 2의 거듭제곱인가 (0은 빈 칸이라 허용).
-// 손댄 저장본이 그대로 들어오면 화면에 없는 색이 나오거나 규칙이 무너진다.
-function 타일값인가(v) {
-  if (v === 0) return true;
-  if (typeof v !== "number" || !Number.isFinite(v) || v < 2) return false;
-  return Number.isInteger(Math.log2(v));
-}
-
-function 격자인가(g, tune) {
-  return Array.isArray(g) && g.length === tune.SIZE * tune.SIZE && g.every(타일값인가);
-}
-
-// 저장본을 그대로 믿지 않는다. 판이 이상하면 판만 버리고 기록은 살린다.
-function parseSave(raw, tune = TUNE) {
-  const base = { record: newRecord(), game: null };
-  try {
-    if (!raw) return base;
-    const s = JSON.parse(raw);
-    if (!s || typeof s !== "object" || Array.isArray(s)) return base;
-
-    const r = newRecord();
-    const record = {
-      best: 정수(s.best, r.best),
-      plays: 정수(s.plays, r.plays),
-      wins: 정수(s.wins, r.wins),
-      bestTile: 정수(s.bestTile, r.bestTile),
-    };
-
-    let game = null;
-    if (s.game && typeof s.game === "object" && 격자인가(s.game.grid, tune)) {
-      game = {
-        grid: s.game.grid.slice(),
-        score: 정수(s.game.score, 0),
-        moves: 정수(s.game.moves, 0),
-        merges: 정수(s.game.merges, 0),
-        spawnSum: 정수(s.game.spawnSum, 0),
-        over: s.game.over === true,
-        won: s.game.won === true,
-        keepGoing: s.game.keepGoing === true,
-      };
-    }
-    return { record, game };
-  } catch {
-    return base;
-  }
-}
-
-function loadSave(tune = TUNE) {
-  try {
-    return parseSave(localStorage.getItem(KEY), tune);
-  } catch {
-    return { record: newRecord(), game: null }; // 읽기 자체가 막힌 경우(사생활 보호 모드 등)
-  }
-}
-
-function saveAll(record, game) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ ...record, game }));
-  } catch {
-    // 저장이 막혀도 게임은 계속 돌아야 한다
-  }
-}
-
-// 판이 끝났을 때 기록을 갱신한다.
-function commit(record, game) {
-  record.plays += 1;
-  if (game.score > record.best) record.best = game.score;
-  if (game.won) record.wins += 1;
-  const 최고 = maxTile(game.grid);
-  if (최고 > record.bestTile) record.bestTile = 최고;
-  return record;
-}
-
-const STORAGE_KEY = KEY;
 
 // 「2048」 화면 그리기 — 규칙을 판단하지 않고 받은 상태를 그대로 그린다
 
 
+
+
+
 // 칸은 한 번만 만들고 이후에는 내용만 갈아 끼운다.
 // 매번 새로 만들면 스와이프 도중에 요소가 교체돼 입력이 씹힌다(「째깍벨트」에서 배운 것).
-function 칸만들기(wrap, tune = TUNE) {
-  const 개수 = tune.SIZE * tune.SIZE;
+function 칸만들기(wrap, size) {
+  const 개수 = size * size;
   if (wrap.childElementCount === 개수) return;
   wrap.innerHTML = "";
-  wrap.style.gridTemplateColumns = `repeat(${tune.SIZE}, 1fr)`;
   for (let i = 0; i < 개수; i++) {
     const cell = document.createElement("div");
     cell.className = "tile empty";
@@ -567,7 +948,15 @@ function 단계(v) {
 }
 
 function renderGrid(wrap, grid, tune = TUNE) {
-  칸만들기(wrap, tune);
+  const size = tune.SIZE;
+  칸만들기(wrap, size);
+  // 🔴 행도 열과 같이 못 박는다. 행을 내용에 맡기면 자릿수가 큰 줄만 낮아져
+  // 칸이 직사각형이 된다(2026-07-31 Gim이 실기기에서 발견. 실측 77×79 / 77×71).
+  const 격자값 = `repeat(${size}, 1fr)`;
+  if (wrap.style.gridTemplateColumns !== 격자값) {
+    wrap.style.gridTemplateColumns = 격자값;
+    wrap.style.gridTemplateRows = 격자값;
+  }
   for (let i = 0; i < grid.length; i++) {
     const cell = wrap.children[i];
     const v = grid[i];
@@ -578,30 +967,126 @@ function renderGrid(wrap, grid, tune = TUNE) {
   }
 }
 
-function renderStatus(els, game, record) {
+function renderStatus(els, game, record, size) {
   els.score.textContent = game.score.toLocaleString("ko-KR");
-  els.best.textContent = record.best.toLocaleString("ko-KR");
+  els.best.textContent = bestOf(record, size).toLocaleString("ko-KR");
   els.moves.textContent = `${game.moves.toLocaleString("ko-KR")}수`;
   // 「최고」는 최고 점수에만 쓴다. 여기까지 「최고」라고 하면 두 값이 같은 말로 보인다.
   const 최고 = maxTile(game.grid);
   els.top.textContent = 최고 ? `타일 ${최고.toLocaleString("ko-KR")}` : "";
+  els.sizeBtn.textContent = `${size}×${size}`;
 }
 
 // 판이 끝났을 때와 목표를 만들었을 때 둘 다 이 덮개를 쓴다.
-// 이긴 경우에는 원작처럼 계속할 수 있어야 하므로 버튼이 하나 더 붙는다.
-function showOver(els, game, record, tune = TUNE) {
+function showOver(els, game, record, size, tune = TUNE) {
   const 이김 = game.won && !game.over;
   els.overTitle.textContent = 이김 ? `${tune.WIN.toLocaleString("ko-KR")} 달성` : "더 움직일 수 없습니다";
   els.overText.innerHTML =
     `${game.score.toLocaleString("ko-KR")}점 · ${game.moves.toLocaleString("ko-KR")}수 · 최고 타일 ${maxTile(game.grid).toLocaleString("ko-KR")}` +
-    (!game.over && 이김 ? "<br>계속해서 더 큰 타일을 노려 보십시오." : "") +
-    (game.over && game.score >= record.best && game.score > 0 ? "<br><em>새 기록입니다</em>" : "");
+    (이김 ? "<br>계속해서 더 큰 타일을 노려 보십시오." : "") +
+    (game.over && game.score >= bestOf(record, size) && game.score > 0 ? "<br><em>새 기록입니다</em>" : "");
   els.keep.hidden = !이김;
   els.over.hidden = false;
 }
 
 function hideOver(els) {
   els.over.hidden = true;
+}
+
+// ── 창고·공방 ─────────────────────────────
+// 타일도 한 번만 만들고 내용만 갈아 끼운다. 매번 새로 만들면 누르는 순간 버튼이 교체돼 탭이 씹힌다.
+function 타일채우기(wrap, 정의목록) {
+  if (wrap.childElementCount === 정의목록.length) return;
+  wrap.innerHTML = "";
+  for (const d of 정의목록) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "shop";
+    b.dataset.id = d.id;
+    b.innerHTML =
+      `<span class="shop-icon">${d.icon}</span>` +
+      `<span class="shop-name">${d.name}</span>` +
+      `<span class="shop-sub"></span>`;
+    wrap.appendChild(b);
+  }
+}
+
+// 창고 — 판 중에는 "쓰기"(남은 개수), 판이 끝나면 "사기"(조각 가격).
+// 같은 줄이 두 얼굴을 하므로 자리(높이)가 흔들리지 않는다.
+function renderItems(wrap, record, 판끝) {
+  타일채우기(wrap, ITEMS);
+  for (const b of wrap.children) {
+    const it = ITEMS.find((i) => i.id === b.dataset.id);
+    const 개수 = record.stock[it.id] || 0;
+    const sub = b.querySelector(".shop-sub");
+    if (판끝) {
+      sub.textContent = `◈ ${it.cost}`;
+      b.disabled = record.parts < it.cost;
+      b.setAttribute("aria-label", `${it.name} 사기 — 조각 ${it.cost}개. ${it.설명}`);
+      b.classList.add("buying");
+    } else {
+      sub.textContent = `${개수}개`;
+      b.disabled = 개수 <= 0;
+      b.setAttribute("aria-label", `${it.name} 쓰기 — ${개수}개 남음. ${it.설명}`);
+      b.classList.remove("buying");
+    }
+    b.classList.toggle("has", !판끝 && 개수 > 0);
+  }
+}
+
+// 공방 — 영구 스킬. 판 중에는 올릴 수 없다(진행 중에 규칙값이 바뀌면 판이 뒤틀린다).
+function renderSkills(wrap, record, 판끝) {
+  타일채우기(wrap, SKILLS);
+  for (const b of wrap.children) {
+    const s = SKILLS.find((k) => k.id === b.dataset.id);
+    const lv = skillLevel(record.skills, s.id);
+    const cost = skillNextCost(record.skills, s.id);
+    const sub = b.querySelector(".shop-sub");
+    sub.textContent = cost === null ? "최고" : `◈ ${cost}`;
+    b.disabled = !판끝 || cost === null || record.parts < cost;
+    b.classList.add("buying");
+    b.classList.toggle("maxed", cost === null);
+    b.setAttribute(
+      "aria-label",
+      `${s.name} ${lv}단계 — 지금 ${s.설명(lv)}` +
+        (cost === null ? ". 최고 단계입니다" : `. 올리면 ${s.설명(lv + 1)}, 조각 ${cost}개`)
+    );
+  }
+}
+
+function renderGauge(fill, label, charge, tune = TUNE) {
+  const 비율 = Math.min(1, charge / tune.GAUGE_NEED);
+  fill.style.width = `${(비율 * 100).toFixed(1)}%`;
+  label.textContent = `${charge}/${tune.GAUGE_NEED}`;
+}
+
+function renderParts(el, parts) {
+  el.textContent = `◈ ${parts.toLocaleString("ko-KR")}`;
+}
+
+// ── 판 크기 고르기 ─────────────────────────
+function renderSizePick(wrap, record, 지금크기) {
+  if (wrap.childElementCount !== SIZES.length) {
+    wrap.innerHTML = "";
+    for (const s of SIZES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "size-opt";
+      b.dataset.size = String(s.size);
+      b.innerHTML =
+        `<span class="size-n">${s.size}×${s.size}</span>` +
+        `<span class="size-name">${s.name}</span>` +
+        `<span class="size-desc">${s.desc}</span>` +
+        `<span class="size-best"></span>`;
+      wrap.appendChild(b);
+    }
+  }
+  for (const b of wrap.children) {
+    const n = Number(b.dataset.size);
+    b.classList.toggle("on", n === 지금크기);
+    const best = bestOf(record, n);
+    b.querySelector(".size-best").textContent = best ? `최고 ${best.toLocaleString("ko-KR")}점` : "기록 없음";
+  }
 }
 
 // 알림은 자기 줄(고정 높이)에 둔다 — 떠 있는 알림은 아래 내용을 가리고 높이를 밀어낸다.
@@ -671,6 +1156,8 @@ function 키연결(처리) {
 
 
 
+
+
 const els = {
   board: document.getElementById("board"),
   score: document.getElementById("score"),
@@ -684,16 +1171,36 @@ const els = {
   keep: document.getElementById("keep"),
   restart: document.getElementById("restart"),
   toast: document.getElementById("toast"),
+  sizeBtn: document.getElementById("size-btn"),
+  sizePick: document.getElementById("size-pick"),
+  sizeList: document.getElementById("size-list"),
+  sizeClose: document.getElementById("size-close"),
+  items: document.getElementById("items"),
+  itemsHint: document.getElementById("items-hint"),
+  skills: document.getElementById("skills"),
+  skillsHint: document.getElementById("skills-hint"),
+  gaugeFill: document.getElementById("gauge-fill"),
+  gaugeNum: document.getElementById("gauge-num"),
+  parts: document.getElementById("parts"),
 };
 
 const 저장 = loadSave(TUNE);
 const record = 저장.record || newRecord();
+let size = sizeOf(record);
+// 조율표는 판을 시작할 때 한 번 굳힌다. 판 도중에 스킬이 바뀌면 규칙이 도중에 달라진다.
+let tune = tuneFor(record.skills, TUNE, size);
 // 원작처럼 진행 중이던 판을 이어서 한다. 저장본이 없거나 이상하면 새 판이다.
-let game = 저장.game || newGame(Math.random, TUNE);
+let game = 저장.game || newGame(Math.random, tune, record.stock);
 
 function 그리기() {
-  renderGrid(els.board, game.grid, TUNE);
-  renderStatus(els, game, record);
+  renderGrid(els.board, game.grid, tune);
+  renderStatus(els, game, record, size);
+  renderItems(els.items, record, game.over);
+  renderSkills(els.skills, record, game.over);
+  renderGauge(els.gaugeFill, els.gaugeNum, game.charge, tune);
+  renderParts(els.parts, record.parts);
+  els.itemsHint.textContent = game.over ? "조각으로 삽니다" : "눌러서 씁니다";
+  els.skillsHint.textContent = game.over ? "조각으로 올립니다" : "판이 끝난 뒤 올립니다";
 }
 
 function 남기기() {
@@ -701,32 +1208,38 @@ function 남기기() {
 }
 
 function 새판() {
-  game = newGame(Math.random, TUNE);
+  tune = tuneFor(record.skills, TUNE, size); // 이번 판에 적용할 규칙을 여기서 굳힌다
+  record.size = size;
+  game = newGame(Math.random, tune, record.stock);
   hideOver(els);
+  els.sizePick.hidden = true;
   그리기();
   남기기();
 }
 
+function 끝내기() {
+  const 조각 = commit(record, game, size, tune);
+  남기기();
+  그리기(); // 창고·공방이 "사기" 얼굴로 바뀐다
+  showOver(els, game, record, size, tune);
+  toast(els.toast, `조각 ${조각.toLocaleString("ko-KR")}개를 얻었습니다`, true);
+}
+
 function 움직이기(dir) {
   if (game.over) return;
-  // 달성 안내가 떠 있는 동안에는 판이 뒤에서 움직이지 않게 막는다
-  if (!els.over.hidden) return;
+  // 덮개(달성 안내·크기 고르기)가 떠 있는 동안에는 판이 뒤에서 움직이지 않게 막는다
+  if (!els.over.hidden || !els.sizePick.hidden) return;
 
-  const r = 한수두기(game, dir, Math.random, TUNE);
+  const r = 한수두기(game, dir, Math.random, tune);
   if (!r.ok) return; // 그 방향으로는 아무것도 바뀌지 않는다 — 헛수는 세지 않는다
 
   그리기();
+  if (r.받은아이템) toast(els.toast, `${itemById(r.받은아이템).name}을(를) 하나 받았습니다`, true);
 
-  if (r.over) {
-    commit(record, game);
-    남기기();
-    showOver(els, game, record, TUNE);
-    return;
-  }
+  if (r.over) return 끝내기();
   if (r.justWon) {
     남기기();
-    showOver(els, game, record, TUNE);
-    return;
+    return showOver(els, game, record, size, tune);
   }
   남기기();
 }
@@ -745,9 +1258,62 @@ els.keep.addEventListener("click", () => {
   toast(els.toast, "계속합니다", true);
 });
 
+// ── 창고 — 판 중이면 쓰고, 판이 끝났으면 산다 ──
+els.items.addEventListener("click", (e) => {
+  const b = e.target.closest(".shop");
+  if (!b || b.disabled) return;
+  const id = b.dataset.id;
+
+  if (game.over) {
+    const r = buyItem(record, id);
+    if (!r.ok) return toast(els.toast, r.why);
+    남기기();
+    return 그리기();
+  }
+
+  const r = useItem(id, game, Math.random, tune);
+  if (!r.ok) return toast(els.toast, r.why);
+  그리기();
+  남기기();
+  toast(els.toast, `${itemById(id).name}`, true);
+  // 「뒤섞기」나 「지우기」 뒤에 판이 막힐 수 있다. 화면만 그리고 넘어가면 죽은 판이 살아 있는 척한다.
+  if (game.over) 끝내기();
+});
+
+// ── 공방 — 판이 끝난 뒤에만 올린다 ──
+els.skills.addEventListener("click", (e) => {
+  const b = e.target.closest(".shop");
+  if (!b || b.disabled) return;
+  if (!game.over) return toast(els.toast, "판이 끝난 뒤에 올릴 수 있습니다");
+  const r = buySkill(record, b.dataset.id);
+  if (!r.ok) return toast(els.toast, r.why);
+  남기기();
+  그리기();
+  toast(els.toast, `${skillById(b.dataset.id).name} ${r.level}단계 — 다음 판부터 적용됩니다`, true);
+});
+
+// ── 판 크기 고르기 ──
+els.sizeBtn.addEventListener("click", () => {
+  renderSizePick(els.sizeList, record, size);
+  els.sizePick.hidden = false;
+});
+els.sizeClose.addEventListener("click", () => { els.sizePick.hidden = true; });
+
+els.sizeList.addEventListener("click", (e) => {
+  const b = e.target.closest(".size-opt");
+  if (!b) return;
+  const n = Number(b.dataset.size);
+  if (!isValidSize(n)) return;
+  els.sizePick.hidden = true;
+  if (n === size) return; // 같은 크기를 다시 고른 것으로 판을 날리지 않는다
+  size = n;
+  새판();
+  toast(els.toast, `${n}×${n} 판으로 시작합니다`, true);
+});
+
 그리기();
 // 이어서 하는 판이 이미 끝나 있었다면 안내를 다시 띄운다
-if (game.over) showOver(els, game, record, TUNE);
+if (game.over) showOver(els, game, record, size, tune);
 </script>
 </body>
 </html>
