@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>눈굴리기 — 굴려서 길 만들기</title>
+<meta name="description" content="눈덩이를 굴려 눈을 먹고 키우는 퍼즐. 커질수록 무거워져 조금씩만 움직입니다. 설치 없이 브라우저에서 바로.">
+<style>
+/* 「눈굴리기」 화면 — 모바일 세로·한손 기준. 눈밭이라 차갑고 밝은 쪽으로 잡았다 */
+
+:root {
+  --bg: #0e1420;
+  --panel: #172032;
+  --line: #26314a;
+  --text: #e8eef7;
+  --dim: #93a2ba;
+  --accent: #6ec8ff;
+  --warn: #ff9a6e;
+  --gap: 5px;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; } /* display 를 지정한 요소가 브라우저 기본값을 덮는 것을 막는다 */
+
+body {
+  margin: 0;
+  padding: 8px 12px 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Malgun Gothic", "맑은 고딕", system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  /* 한글은 기본값이면 낱글자 단위로 잘린다("사라집 / 니다") */
+  word-break: keep-all;
+  max-width: 560px;
+  margin-inline: auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  /* 연달아 굴릴 때 숫자가 선택돼 파랗게 물드는 것을 막는다 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 남는 높이는 main 첫 자식(.statusbar)의 margin-top:auto 로 위 한 곳에 몬다.
+   세 게임과 같은 규약이다 — main 에 justify-content 를 두지 않는다. */
+main { flex: 1; display: flex; flex-direction: column; }
+
+/* ── 최상단 ─────────────────────────────── */
+.topbar {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 8px; margin-bottom: 3px;
+}
+.topbar .topleft { justify-self: start; }
+.topbar .topright { justify-self: end; }
+h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; }
+.sub { margin: 0 0 6px; color: var(--dim); font-size: .72rem; text-align: center; }
+
+.reach-box { font-size: .72rem; color: var(--dim); }
+.reach-box b { color: var(--accent); font-variant-numeric: tabular-nums; font-size: .84rem; }
+.reach-box b.low { color: var(--warn); }
+
+.topbtn {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 10px; font-size: .74rem; cursor: pointer;
+  font-family: inherit;
+}
+.topbtn.danger { color: #e59a9a; border-color: #5d3a3a; }
+.topbtn:active { transform: scale(.96); }
+
+/* ── 현황 ───────────────────────────────── */
+.statusbar {
+  flex: 0 0 auto;
+  margin-top: auto; /* main 의 첫 자식. 남는 높이를 전부 여기 위로 민다 */
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 6px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.ball-box { display: flex; align-items: baseline; gap: 4px; }
+.ball-num { font-size: 1.6rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ball-unit { font-size: .72rem; color: var(--dim); }
+.meta { display: flex; align-items: center; gap: 10px; font-size: .72rem; color: var(--dim); }
+.meta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 알림은 자기 줄(고정 높이)에 둔다 — 떴다 사라질 때 아래가 밀리지 않게 */
+.notice { height: 22px; display: flex; align-items: center; justify-content: center; margin: 6px 0 2px; }
+.toast {
+  font-size: .74rem; color: var(--dim);
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 3px 12px; border-radius: 999px;
+  opacity: 0; transform: translateY(-3px);
+  transition: opacity .18s, transform .18s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.good { color: var(--accent); border-color: var(--accent); }
+
+/* ── 눈밭 ───────────────────────────────── */
+.stage-wrap { position: relative; }
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr));
+  /* 🔴 행 높이를 내용이 아니라 판이 정하게 한다. 이게 없으면 판 높이만 고정되고
+     행은 내용에 맞춰 나뉘어 칸이 직사각형이 된다(「2048」에서 실제로 겪은 것). */
+  grid-auto-rows: 1fr;
+  aspect-ratio: 1;
+  gap: var(--gap);
+  padding: var(--gap);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  /* 쓸어 넘기는 동작이 화면 스크롤·당겨서 새로고침으로 새지 않게 한다 */
+  touch-action: none;
+}
+
+.cell {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  font-size: .78rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  /* 글자가 칸 크기를 밀어내지 못하게 못 박는다 — 위 grid-auto-rows 와 한 쌍이다 */
+  min-width: 0; min-height: 0; overflow: hidden;
+  transition: background-color .12s, color .12s;
+}
+
+/* 눈 깊이 — 색과 숫자 두 축으로 준다. 색 하나로는 사람이 단계를 못 센다 */
+.cell.snow { color: #0e1420; }
+.cell.snow.d1 { background: #7d90ad; }
+.cell.snow.d2 { background: #a8bdd6; }
+.cell.snow.d3 { background: #d3e4f5; }
+.cell.snow.d4 { background: #eaf4ff; }
+.cell.snow.d5 { background: #ffffff; }
+.cell.bare { background: #2b2118; color: transparent; }   /* 눈을 다 먹은 흙바닥 */
+.cell.rock { background: #39404f; color: transparent; box-shadow: inset 0 0 0 2px #4b5468; }
+
+/* 눈덩이가 있는 칸 */
+.cell.ball {
+  box-shadow: inset 0 0 0 3px var(--accent), 0 0 12px rgba(110, 200, 255, .5);
+  color: var(--accent);
+}
+.cell.ball.bare::after,
+.cell.ball.snow::after { content: "●"; font-size: 1.05rem; color: var(--accent); }
+.cell.ball { position: relative; }
+.cell.ball::after { position: absolute; }
+
+/* 끝 화면 */
+.over {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(14, 20, 32, .93); border-radius: 14px;
+  text-align: center; padding: 16px;
+}
+.over strong { font-size: 1.05rem; }
+.over p { margin: 0; font-size: .86rem; line-height: 1.7; color: var(--dim); }
+.over em { color: var(--accent); font-style: normal; font-weight: 700; }
+.over-btns { display: flex; gap: 8px; }
+.primary {
+  background: var(--accent); color: #0b1017; border: none; border-radius: 10px;
+  padding: 11px 22px; font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.primary:active { transform: scale(.97); }
+
+/* ── 방향 패드 ───────────────────────────── */
+/* 엄지가 닿는 자리에 둔다. 쓸기만 두면 판 밖에서 쓸었을 때 조작이 통째로 헛돈다 */
+.pad {
+  flex: 0 0 auto;
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-areas: ".  up    ." "left . right" ".  down  .";
+  gap: 6px;
+  justify-items: center;
+}
+.dirbtn.up { grid-area: up; }
+.dirbtn.left { grid-area: left; }
+.dirbtn.right { grid-area: right; }
+.dirbtn.down { grid-area: down; }
+.dirbtn {
+  width: 100%; max-width: 96px;
+  min-height: 46px;   /* 탭 대상 최소 크기. 이 아래로 내려가면 눌리지 않는다 */
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 12px;
+  font-family: inherit; cursor: pointer;
+}
+.dirbtn i { font-style: normal; font-size: .9rem; color: var(--dim); }
+.dirbtn em {
+  font-style: normal; font-weight: 700; font-size: 1rem;
+  color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.dirbtn[aria-disabled="true"] { opacity: .3; }
+.dirbtn[aria-disabled="true"] i { color: var(--dim); }
+.dirbtn:not([aria-disabled="true"]):active { transform: scale(.95); border-color: var(--accent); }
+
+/* ── 공방 ───────────────────────────────── */
+.panel { flex: 0 0 auto; margin-top: 10px; }
+.panel h2 {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .74rem; margin: 0 0 4px; color: var(--dim); font-weight: 600;
+}
+.panel h2 .hint { font-size: .64rem; opacity: .7; font-weight: 400; }
+
+.shops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+/* 아이콘을 왼쪽에 세로로 걸쳐 두 줄로 만든다 — 세로 3줄이면 버튼이 64px까지 두꺼워진다 */
+.shop {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 0 5px;
+  align-items: center; justify-items: center;
+  padding: 5px 5px;
+  min-height: 44px;   /* 탭 대상 바닥값 */
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+  font-family: inherit;
+}
+.shop-icon { grid-row: 1 / 3; font-size: 1.05rem; line-height: 1.1; }
+.shop-name { font-size: .68rem; }
+.shop-sub { font-size: .64rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+.shop.has { border-color: var(--accent); }
+.shop.has .shop-sub { color: var(--accent); }
+.shop.maxed .shop-sub { color: var(--dim); }
+.shop:active { transform: scale(.96); }
+
+/* ── 규칙 ───────────────────────────────── */
+.howto { margin-top: 10px; font-size: .74rem; color: var(--dim); }
+.howto summary { cursor: pointer; padding: 4px 0; }
+.howto ul { margin: 6px 0; padding-left: 18px; }
+.howto li { margin-bottom: 4px; }
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topleft">
+    <span class="reach-box" title="한 수에 굴러갈 수 있는 칸 수">기동력 <b id="reach">5칸</b></span>
+  </div>
+  <h1>눈굴리기</h1>
+  <div class="topright">
+    <button type="button" id="restart" class="topbtn danger">새 판</button>
+  </div>
+</header>
+<p class="sub">눈을 먹으며 굴리십시오. <strong>커질수록 조금씩만</strong> 움직입니다.</p>
+
+<main>
+  <section class="statusbar" aria-label="현황">
+    <div class="ball-box">
+      <span class="ball-num" id="ball">0</span>
+      <span class="ball-unit">눈덩이</span>
+    </div>
+    <div class="meta">
+      <span>최고 <b id="best">0</b></span>
+      <span id="moves">0수</span>
+      <span id="parts">◈ 0</span>
+    </div>
+  </section>
+
+  <div class="notice"><span id="toast" class="toast" role="status" aria-live="polite"></span></div>
+
+  <section class="stage-wrap">
+    <!-- 쓸어 넘기기가 화면 스크롤로 새지 않게 touch-action 을 CSS에서 none 으로 둔다 -->
+    <div id="board" class="board" aria-label="눈밭"></div>
+
+    <div id="over" class="over" hidden>
+      <strong id="over-title"></strong>
+      <p id="over-text"></p>
+      <div class="over-btns">
+        <button type="button" id="again" class="primary">새 판</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 🔴 방향 패드를 따로 둔다. 쓸기를 판 위에서만 받으면, 엄지가 자연스럽게 놓이는
+       아래쪽에서 쓸었을 때 조작이 통째로 헛돈다(「2048」에서 실제로 겪은 것).
+       패드에는 그 방향으로 몇 칸 갈 수 있는지를 적어 머리로 세지 않아도 되게 한다. -->
+  <section class="pad" aria-label="굴릴 방향">
+    <button type="button" class="dirbtn up"    data-dir="up"    aria-label="위로 굴리기"><i>▲</i><em id="n-up"></em></button>
+    <button type="button" class="dirbtn left"  data-dir="left"  aria-label="왼쪽으로 굴리기"><i>◀</i><em id="n-left"></em></button>
+    <button type="button" class="dirbtn right" data-dir="right" aria-label="오른쪽으로 굴리기"><i>▶</i><em id="n-right"></em></button>
+    <button type="button" class="dirbtn down"  data-dir="down"  aria-label="아래로 굴리기"><i>▼</i><em id="n-down"></em></button>
+  </section>
+
+  <section class="panel">
+    <h2>공방 <span class="hint">판이 끝난 뒤 올립니다</span></h2>
+    <div id="skills" class="shops"></div>
+  </section>
+
+  <details class="howto">
+    <summary>규칙 보기</summary>
+    <ul>
+      <li>눈덩이를 <strong>상하좌우</strong>로 굴립니다. 판을 쓸거나 아래 화살표를 누르십시오.</li>
+      <li>눈이 있는 칸으로 <strong>계속 굴러가고</strong>, 흙바닥·바위·벽을 만나면 그 앞에서 멈춥니다.</li>
+      <li>지날 때마다 그 칸의 눈을 <strong>한 겹</strong> 먹습니다. 칸에 적힌 숫자가 <strong>남은 겹 수</strong>입니다.</li>
+      <li>눈을 다 먹은 칸은 <strong>흙바닥</strong>이 되어 더는 지날 수 없습니다.</li>
+      <li>🔴 <strong>커질수록 무거워집니다.</strong> 눈덩이가 10 커질 때마다 한 수에 갈 수 있는 칸이 하나씩 줄어듭니다.</li>
+      <li>어느 쪽으로도 굴러가지 않으면 그 판은 끝입니다.</li>
+      <li>판이 끝나면 눈덩이 크기의 <strong>10%가 조각</strong>이 됩니다. 조각으로 <strong>공방</strong>에서 영구 스킬을 올립니다.</li>
+      <li>기록·조각·스킬은 이 브라우저에 저장됩니다.</li>
+    </ul>
+  </details>
+</main>
+<script type="module">
+// 「눈굴리기」 조율값 — 값의 출처를 한 곳에만 둔다. 규칙 함수는 이 표를 인자로 받는다
+
+// 🔴 이 게임의 축은 **커지고 싶다 ↔ 커지면 못 움직인다** 하나다.
+//    REACH_BASE 와 REACH_DROP 이 그 긴장을 만드는 두 값이고, 나머지는 거들 뿐이다.
+//    두 값은 짝으로만 의미가 있다 — 하나만 바꾸면 난이도가 통째로 달라진다(LESSONS 1.4).
+const TUNE = {
+  // 판 한 변의 칸 수. 🔴 감으로 고르지 않고 5·6·7·8을 각 4,000판 재서 정했다(2026-08-02).
+  //    평균 수 9 / 12 / 16 / 20, 평균 크기 25 / 32 / 39 / 45.
+  //    6×6은 12수라 너무 짧고, 8×8은 칸이 좁아 눈 깊이 숫자가 답답하다.
+  //    이 게임은 탭이 아니라 **스와이프** 조작이라 칸이 작아져도 조작에 지장이 없다.
+  SIZE: 7,
+  DEPTH_MIN: 1, // 눈 깊이 최솟값
+  DEPTH_MAX: 3, // 눈 깊이 최댓값 — 「다진 눈」 스킬이 올린다
+  ROCK_RATE: 0.08, // 바위가 될 확률 — 「길트기」 스킬이 낮춘다
+  REACH_BASE: 5, // 기동력 기본값(한 수에 굴러갈 수 있는 최대 칸 수) — 「눈삽」이 올린다
+  REACH_DROP: 10, // 크기가 이만큼 늘 때마다 기동력이 1 줄어든다
+  REACH_MIN: 1, // 아무리 커져도 이만큼은 움직인다. 0이면 판이 스스로 끝나 버린다
+  PARTS_RATE: 0.1, // 판이 끝나면 크기의 이만큼이 조각이 된다
+};
+
+// 굴릴 수 있는 방향. 순서 자체에 의미는 없다(막힘 검사에서만 쓴다).
+const DIRS = ["up", "down", "left", "right"];
+
+// 「눈굴리기」 판 규칙 — 굴리기·먹기·끝남 판정. 화면을 전혀 모른다
+
+// 칸 값의 뜻. 판은 길이 size*size 의 평평한 배열이다
+// (2차원 배열 대신 평평하게 둔 이유는 100만 판 하네스에서 복사 비용을 줄이기 위해서다).
+const 바위 = -1;
+const 맨바닥 = 0; // 눈을 다 먹어 흙이 드러난 칸. 더는 지날 수 없다
+
+// 🔴 지날 때마다 깊이를 **1씩만** 먹는다. 한 번에 통째로 먹지 않는다.
+//    처음엔 통째로 먹게 만들었더니 36칸짜리 판이 8수에 소진돼, 정책 4종·스킬 3단계가
+//    **전부 평균 8수로 똑같이** 나왔다(실측). 무엇을 해도 결과가 같으면 판단이 없는 게임이다.
+//    1씩 먹게 하니 깊이 3인 칸이 "세 번 지날 수 있는 길"이 되어 판이 길어지고,
+//    「깊은 길을 아껴 둘 것인가」라는 판단이 생긴다.
+const 한번에먹는양 = 1;
+
+// 방향 → [행 증가, 열 증가]
+const 이동 = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+
+/** 판에 남아 있는 눈의 총합 */
+function 눈총합(cells) {
+  let s = 0;
+  for (let i = 0; i < cells.length; i++) if (cells[i] > 0) s += cells[i];
+  return s;
+}
+
+/** 🔴 이 게임의 심장 — 눈덩이가 클수록 한 수에 갈 수 있는 칸이 줄어든다 */
+function 기동력(ball, tune = TUNE) {
+  return Math.max(tune.REACH_MIN, tune.REACH_BASE - Math.floor(ball / tune.REACH_DROP));
+}
+
+/** 그 방향으로 몇 칸 굴러갈 수 있는지 센다(판을 바꾸지 않는다).
+ *  눈이 있는 칸으로만 굴러가고, 벽·바위·맨바닥을 만나면 그 앞에서 멈춘다. */
+function 굴릴칸수(cells, size, pos, dir, reach) {
+  const [dr, dc] = 이동[dir];
+  let r = (pos / size) | 0;
+  let c = pos % size;
+  let n = 0;
+  while (n < reach) {
+    r += dr;
+    c += dc;
+    if (r < 0 || r >= size || c < 0 || c >= size) break;
+    if (cells[r * size + c] <= 0) break; // 바위(-1) 또는 맨바닥(0)
+    n++;
+  }
+  return n;
+}
+
+/** 네 방향 어디로도 한 칸도 못 가면 판이 끝난다 */
+function 막혔나(game, tune = TUNE) {
+  const reach = 기동력(game.ball, tune);
+  for (const d of DIRS) {
+    if (굴릴칸수(game.cells, game.size, game.pos, d, reach) > 0) return false;
+  }
+  return true;
+}
+
+/** 새 판. 🔴 rand 를 인자로 받는다 — 하네스가 씨앗 난수를 끼워 넣을 수 있어야 한다(LESSONS 5.10) */
+function newGame(tune = TUNE, rand = Math.random) {
+  const size = tune.SIZE;
+  const 깊이폭 = tune.DEPTH_MAX - tune.DEPTH_MIN + 1;
+  const cells = new Array(size * size);
+  for (let i = 0; i < cells.length; i++) {
+    cells[i] = rand() < tune.ROCK_RATE ? 바위 : tune.DEPTH_MIN + ((rand() * 깊이폭) | 0);
+  }
+
+  // 🔴 시작 칸은 **적어도 한 방향으로 굴러갈 수 있는** 눈 칸 중에서 고른다.
+  //    아무 칸이나 고르면 첫 수도 못 두고 끝나는 판이 나온다(LESSONS 1.1 — 진행 동작을 보장한다).
+  const reach0 = 기동력(0, tune);
+  const 후보 = [];
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] <= 0) continue;
+    for (const d of DIRS) {
+      if (굴릴칸수(cells, size, i, d, reach0) > 0) {
+        후보.push(i);
+        break;
+      }
+    }
+  }
+  // 후보가 없는 판(바위투성이)은 아주 드물지만 원리상 가능하다. 눈 칸 아무 데나 두고 즉시 끝낸다.
+  let pos = 후보.length ? 후보[(rand() * 후보.length) | 0] : cells.findIndex((v) => v > 0);
+
+  const game = {
+    size,
+    cells,
+    pos,
+    ball: 0, // 눈덩이 크기 = 지금까지 먹은 눈의 합
+    moves: 0,
+    eaten: 0, // 지나간 칸 수 = 맨바닥이 된 칸 수
+    처음눈: 눈총합(cells),
+    over: false,
+  };
+
+  if (pos < 0) {
+    // 눈이 한 칸도 없는 판. 판으로 성립하지 않으므로 바로 끝낸다.
+    game.pos = 0;
+    game.over = true;
+    return game;
+  }
+
+  // 시작 칸의 눈을 한 겹 먹고 시작한다
+  cells[pos] -= 한번에먹는양;
+  game.ball = 한번에먹는양;
+  game.eaten = 1;
+  game.over = 막혔나(game, tune);
+  return game;
+}
+
+/** 한 수. 성공하면 판을 제자리에서 고친다 */
+function 굴리기(game, dir, tune = TUNE) {
+  if (game.over) return { ok: false, why: "판이 끝났습니다" };
+
+  // 기동력은 **수를 시작할 때의 크기**로 정한다. 굴러가는 도중에 커져도 그 수 안에서는 바뀌지 않는다.
+  const reach = 기동력(game.ball, tune);
+  const n = 굴릴칸수(game.cells, game.size, game.pos, dir, reach);
+  if (n === 0) return { ok: false, why: "그 방향으로는 굴러가지 않습니다" };
+
+  const [dr, dc] = 이동[dir];
+  let r = (game.pos / game.size) | 0;
+  let c = game.pos % game.size;
+  let 먹은눈 = 0;
+  for (let k = 0; k < n; k++) {
+    r += dr;
+    c += dc;
+    const i = r * game.size + c;
+    game.cells[i] -= 한번에먹는양;
+    먹은눈 += 한번에먹는양;
+    game.eaten++;
+  }
+
+  game.pos = r * game.size + c;
+  game.ball += 먹은눈;
+  game.moves++;
+  if (막혔나(game, tune)) game.over = true;
+
+  return { ok: true, 칸수: n, 먹은눈, reach };
+}
+
+/** 지금 둘 수 있는 방향과 각각 몇 칸인지 — 화면의 안내와 봇 정책이 함께 쓴다 */
+function 갈수있는곳(game, tune = TUNE) {
+  const reach = 기동력(game.ball, tune);
+  const out = [];
+  for (const d of DIRS) {
+    const n = 굴릴칸수(game.cells, game.size, game.pos, d, reach);
+    if (n > 0) out.push({ dir: d, 칸수: n });
+  }
+  return out;
+}
+
+// 「눈굴리기」 영구 스킬 — 판을 넘어 쌓인다. 화면을 전혀 모른다
+
+// 🔴 「눈삽」이 주력이다 — 이 게임의 유일한 압력(커지면 못 움직인다)을 정면으로 되민다.
+//    나머지 둘은 판을 넉넉하게 만들 뿐이라 값을 낮게 잡았다.
+//    ⚠️ 아래 비용·효과는 **첫 시뮬레이션 전의 출발값**이다. 100만 판 실측으로 다시 정한다(LESSONS 1.3).
+const SKILLS = [
+  {
+    id: "shovel",
+    name: "눈삽",
+    icon: "🥄",
+    max: 5,
+    설명: (lv) => (lv === 0 ? "기동력 그대로" : `한 수에 ${lv}칸 더 굴러갑니다`),
+  },
+  {
+    id: "packed",
+    name: "다진 눈",
+    icon: "❄️",
+    max: 3,
+    설명: (lv) => (lv === 0 ? "눈 깊이 그대로" : `눈이 최대 ${lv}만큼 더 깊이 쌓입니다`),
+  },
+  {
+    id: "path",
+    name: "길트기",
+    icon: "🪨",
+    max: 4,
+    설명: (lv) => (lv === 0 ? "바위 그대로" : `바위가 ${lv * 15}% 가량 줄어듭니다`),
+  },
+];
+
+/** 다음 단계로 올리는 값. 최고 단계면 null */
+function 스킬비용(id, lv) {
+  const s = 스킬찾기(id);
+  if (!s || lv >= s.max) return null;
+  // 단계마다 값이 가파르게 오른다 — 한 스킬만 끝까지 올리는 것을 막는다
+  const 기본 = { shovel: 500, packed: 300, path: 250 }[id] || 300;
+  return 기본 * (lv + 1);
+}
+
+function 스킬찾기(id) {
+  return SKILLS.find((s) => s.id === id) || null;
+}
+
+function 스킬레벨(record, id) {
+  const v = record && record.skills ? record.skills[id] : 0;
+  return Number.isInteger(v) && v >= 0 ? v : 0;
+}
+
+/** 조각을 써서 한 단계 올린다 */
+function 스킬사기(record, id) {
+  const s = 스킬찾기(id);
+  if (!s) return { ok: false, why: "없는 스킬입니다" };
+  const lv = 스킬레벨(record, id);
+  const cost = 스킬비용(id, lv);
+  if (cost === null) return { ok: false, why: "이미 최고 단계입니다" };
+  if (record.parts < cost) return { ok: false, why: `조각이 ${cost - record.parts}개 모자랍니다` };
+  record.parts -= cost;
+  record.skills[id] = lv + 1;
+  return { ok: true, level: lv + 1 };
+}
+
+/** 🔴 판을 시작할 때 조율표를 한 번 굳힌다 — 판 도중에 규칙값이 바뀌지 않게(LESSONS 3.3의 취지).
+ *  규칙 함수(board.js)는 이 결과만 받으므로 스킬의 존재를 몰라도 된다. */
+function 판조율(record, tune = TUNE) {
+  const shovel = 스킬레벨(record, "shovel");
+  const packed = 스킬레벨(record, "packed");
+  const path = 스킬레벨(record, "path");
+  return {
+    ...tune,
+    REACH_BASE: tune.REACH_BASE + shovel,
+    DEPTH_MAX: tune.DEPTH_MAX + packed,
+    ROCK_RATE: Math.max(0, tune.ROCK_RATE * (1 - 0.15 * path)),
+  };
+}
+
+// 「눈굴리기」 판을 넘어 남는 것 — 기록·조각·스킬. 화면을 전혀 모른다
+
+
+const 저장키 = "snowball.v1";
+
+function newRecord() {
+  const skills = {};
+  for (const s of SKILLS) skills[s.id] = 0;
+  return { parts: 0, best: 0, plays: 0, bestMoves: 0, skills };
+}
+
+/** 판이 끝났을 때 기록을 갱신한다. 얻은 조각 수를 돌려준다. */
+function 기록반영(record, game, tune = TUNE) {
+  record.plays += 1;
+  if (game.ball > record.best) record.best = game.ball;
+  if (game.moves > record.bestMoves) record.bestMoves = game.moves;
+  const 조각 = Math.floor(game.ball * tune.PARTS_RATE);
+  record.parts += 조각;
+  return 조각;
+}
+
+const 정수 = (v, 기본) => (Number.isInteger(v) && v >= 0 ? v : 기본);
+
+/** 손댄 저장본이 들어와도 게임은 돌아야 한다 — 모르는 값은 기본값으로 떨어뜨린다 */
+function 저장본읽기(raw) {
+  const r = newRecord();
+  let s;
+  try {
+    s = JSON.parse(raw);
+  } catch {
+    return r;
+  }
+  if (!s || typeof s !== "object") return r;
+
+  r.parts = 정수(s.parts, 0);
+  r.best = 정수(s.best, 0);
+  r.plays = 정수(s.plays, 0);
+  r.bestMoves = 정수(s.bestMoves, 0);
+  if (s.skills && typeof s.skills === "object" && !Array.isArray(s.skills)) {
+    for (const sk of SKILLS) r.skills[sk.id] = Math.min(sk.max, 정수(s.skills[sk.id], 0));
+  }
+  return r;
+}
+
+function 저장(record) {
+  try {
+    localStorage.setItem(저장키, JSON.stringify(record));
+  } catch {
+    // 저장이 막혀도 게임은 계속 돌아야 한다
+  }
+}
+
+function 불러오기() {
+  try {
+    const raw = localStorage.getItem(저장키);
+    return raw ? 저장본읽기(raw) : newRecord();
+  } catch {
+    return newRecord();
+  }
+}
+
+// 「눈굴리기」 화면 그리기 — 규칙을 바꾸지 않는다. 규칙 모듈은 이 파일을 모른다
+
+
+
+// 🔴 칸은 **한 번만 만들고 내용만 갈아 끼운다**(LESSONS 2.3).
+//    매번 다시 만들면 누르려던 순간 대상이 옮겨 가고, 애니메이션도 끊긴다.
+function 판만들기(el, size) {
+  el.style.setProperty("--n", size);
+  el.textContent = "";
+  const 조각 = document.createDocumentFragment();
+  for (let i = 0; i < size * size; i++) {
+    const d = document.createElement("div");
+    d.className = "cell";
+    조각.appendChild(d);
+  }
+  el.appendChild(조각);
+}
+
+function 판그리기(el, game) {
+  const 칸들 = el.children;
+  for (let i = 0; i < game.cells.length; i++) {
+    const v = game.cells[i];
+    const 눈덩이 = i === game.pos;
+    // 깊이를 색이 아니라 **숫자로도** 준다 — 색 하나로 단계를 구분하면 6~8개에서 무너진다(LESSONS 2.8)
+    const 클래스 =
+      "cell" +
+      (v === 바위 ? " rock" : v === 맨바닥 ? " bare" : ` snow d${Math.min(v, 5)}`) +
+      (눈덩이 ? " ball" : "");
+    const 칸 = 칸들[i];
+    if (칸.className !== 클래스) 칸.className = 클래스;
+    const 글 = v > 0 ? String(v) : "";
+    if (칸.textContent !== 글) 칸.textContent = 글;
+  }
+}
+
+function 현황그리기(els, game, record, tune = TUNE) {
+  els.ball.textContent = game.ball.toLocaleString("ko-KR");
+  // 「최고」는 판이 끝나야 저장되지만 표시는 지금 크기가 넘어선 순간 바로 올린다.
+  // 안 그러면 첫 판 내내 「최고 0」이 떠 고장처럼 보인다(「2048」에서 겪은 것).
+  els.best.textContent = Math.max(record.best, game.ball).toLocaleString("ko-KR");
+  els.moves.textContent = `${game.moves.toLocaleString("ko-KR")}수`;
+
+  // 기동력은 이 게임의 심장이라 늘 눈에 보이게 둔다
+  const reach = 기동력(game.ball, tune);
+  els.reach.textContent = `${reach}칸`;
+  els.reach.classList.toggle("low", reach <= 2);
+  els.parts.textContent = `◈ ${record.parts.toLocaleString("ko-KR")}`;
+}
+
+/** 어느 쪽으로 몇 칸 갈 수 있는지 화살표에 적어 준다 — 머리로 세지 않아도 되게 */
+function 방향그리기(els, game, tune = TUNE) {
+  const 갈곳 = new Map(갈수있는곳(game, tune).map((g) => [g.dir, g.칸수]));
+  for (const [dir, el] of Object.entries(els.arrows)) {
+    const n = 갈곳.get(dir) || 0;
+    el.textContent = n ? String(n) : "";
+    // 🔴 막힌 방향은 disabled 가 아니라 aria-disabled 로 둔다.
+    //    disabled 면 눌린 표시조차 없어 "터치가 안 먹었다"고 느낀다(LESSONS 2.6).
+    el.setAttribute("aria-disabled", n ? "false" : "true");
+  }
+}
+
+let 알림타이머 = null;
+function toast(el, 글, 좋음 = false) {
+  el.textContent = 글;
+  el.className = "toast show" + (좋음 ? " good" : "");
+  clearTimeout(알림타이머);
+  알림타이머 = setTimeout(() => {
+    el.className = "toast";
+  }, 1600);
+}
+
+function 공방그리기(el, record) {
+  if (!el.children.length) {
+    for (const s of SKILLS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "shop";
+      b.dataset.id = s.id;
+      b.innerHTML =
+        `<span class="shop-icon" aria-hidden="true">${s.icon}</span>` +
+        `<span class="shop-name"></span><span class="shop-sub"></span>`;
+      el.appendChild(b);
+    }
+  }
+  for (const b of el.children) {
+    const s = SKILLS.find((x) => x.id === b.dataset.id);
+    const lv = 스킬레벨(record, s.id);
+    const cost = 스킬비용(s.id, lv);
+    b.querySelector(".shop-name").textContent = `${s.name} ${lv}`;
+    b.querySelector(".shop-sub").textContent = cost === null ? "최고" : `◈ ${cost}`;
+    b.classList.toggle("has", cost !== null && record.parts >= cost);
+    b.classList.toggle("maxed", cost === null);
+    b.setAttribute(
+      "aria-label",
+      `${s.name} ${lv}단계. ${s.설명(lv)}` +
+        (cost === null ? ". 최고 단계입니다" : `. 올리면 ${s.설명(lv + 1)}, 조각 ${cost}개`),
+    );
+  }
+}
+
+function 끝화면(els, game, record, 조각) {
+  els.overTitle.textContent = "더 굴릴 수 없습니다";
+  els.overText.innerHTML =
+    `눈덩이 <strong>${game.ball.toLocaleString("ko-KR")}</strong> · ${game.moves.toLocaleString("ko-KR")}수` +
+    `<br>조각 <strong>${조각.toLocaleString("ko-KR")}</strong>개를 얻었습니다` +
+    (game.ball >= record.best && game.ball > 0 ? "<br><em>새 기록입니다</em>" : "");
+  els.over.hidden = false;
+}
+
+// 「눈굴리기」 화면과 규칙을 잇는다 — 규칙은 board.js, 그리기는 ui.js 가 맡는다
+
+
+
+
+
+const els = {
+  board: document.getElementById("board"),
+  ball: document.getElementById("ball"),
+  best: document.getElementById("best"),
+  moves: document.getElementById("moves"),
+  reach: document.getElementById("reach"),
+  parts: document.getElementById("parts"),
+  toast: document.getElementById("toast"),
+  over: document.getElementById("over"),
+  overTitle: document.getElementById("over-title"),
+  overText: document.getElementById("over-text"),
+  again: document.getElementById("again"),
+  restart: document.getElementById("restart"),
+  skills: document.getElementById("skills"),
+  pad: document.querySelector(".pad"),
+  arrows: {
+    up: document.getElementById("n-up"),
+    down: document.getElementById("n-down"),
+    left: document.getElementById("n-left"),
+    right: document.getElementById("n-right"),
+  },
+};
+
+let record = 불러오기();
+let 판튠 = TUNE;
+let game = null;
+
+function 새판() {
+  // 🔴 조율표를 판 시작 시 한 번 굳힌다 — 판 도중에 스킬이 반영돼 판이 뒤틀리지 않게
+  판튠 = 판조율(record, TUNE);
+  game = newGame(판튠);
+  판만들기(els.board, game.size);
+  els.over.hidden = true;
+  그리기();
+  if (game.over) 끝내기(); // 원리상 드물지만 시작하자마자 막힌 판이 있을 수 있다
+}
+
+function 그리기() {
+  판그리기(els.board, game);
+  현황그리기(els, game, record, 판튠);
+  방향그리기(els, game, 판튠);
+  공방그리기(els.skills, record);
+}
+
+function 끝내기() {
+  const 조각 = 기록반영(record, game, 판튠);
+  저장(record);
+  그리기();
+  끝화면(els, game, record, 조각);
+}
+
+function 움직이기(dir) {
+  if (!game || game.over) return;
+  const r = 굴리기(game, dir, 판튠);
+  if (!r.ok) return toast(els.toast, r.why);
+  그리기();
+  if (game.over) 끝내기();
+}
+
+// ── 조작 ──────────────────────────────────────────────
+// 판 위에서 쓸기
+const 최소거리 = 22; // 이만큼 움직여야 쓸기로 본다. 더 짧으면 탭이 방향으로 오인된다
+let 시작 = null;
+let 잠금 = false;
+
+els.board.addEventListener("pointerdown", (e) => {
+  시작 = { x: e.clientX, y: e.clientY };
+  잠금 = false;
+});
+els.board.addEventListener("pointermove", (e) => {
+  if (!시작 || 잠금) return;
+  const dx = e.clientX - 시작.x;
+  const dy = e.clientY - 시작.y;
+  if (Math.abs(dx) < 최소거리 && Math.abs(dy) < 최소거리) return;
+  // 손을 뗄 때가 아니라 **방향이 분명해지는 순간** 처리한다.
+  // 한 번 처리한 뒤에는 손을 뗄 때까지 잠가 한 번의 쓸기가 두 수로 새지 않게 한다.
+  잠금 = true;
+  움직이기(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
+});
+const 쓸기끝 = () => {
+  시작 = null;
+  잠금 = false;
+};
+els.board.addEventListener("pointerup", 쓸기끝);
+els.board.addEventListener("pointercancel", 쓸기끝);
+els.board.addEventListener("pointerleave", 쓸기끝);
+
+// 방향 패드 — 닿는 순간 처리한다(손을 뗄 때 처리하면 한 박자 늦게 느껴진다)
+els.pad.addEventListener("pointerdown", (e) => {
+  const b = e.target.closest(".dirbtn");
+  if (!b) return;
+  e.preventDefault();
+  움직이기(b.dataset.dir);
+});
+// 키보드로도 누를 수 있어야 한다. e.detail === 0 일 때만 받아 두 번 처리되는 것을 막는다
+els.pad.addEventListener("click", (e) => {
+  if (e.detail !== 0) return;
+  const b = e.target.closest(".dirbtn");
+  if (b) 움직이기(b.dataset.dir);
+});
+
+const 키맵 = {
+  ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+  a: "left", d: "right", w: "up", s: "down",
+  A: "left", D: "right", W: "up", S: "down",
+};
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const dir = 키맵[e.key];
+  if (!dir) return;
+  e.preventDefault(); // 방향키로 화면이 스크롤되는 것을 막는다
+  움직이기(dir);
+});
+
+// ── 버튼 ──────────────────────────────────────────────
+els.again.addEventListener("click", 새판);
+els.restart.addEventListener("click", 새판);
+
+els.skills.addEventListener("click", (e) => {
+  const b = e.target.closest(".shop");
+  if (!b) return;
+  if (game && !game.over) return toast(els.toast, "판이 끝난 뒤에 올릴 수 있습니다");
+  const r = 스킬사기(record, b.dataset.id);
+  if (!r.ok) return toast(els.toast, r.why);
+  저장(record);
+  그리기();
+  toast(els.toast, `${스킬찾기(b.dataset.id).name} ${r.level}단계 — 다음 판부터 적용됩니다`, true);
+});
+
+새판();
+</script>
+</body>
+</html>
