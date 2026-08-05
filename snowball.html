@@ -269,8 +269,10 @@ const TUNE = {
   R0: 2,           // 눈덩이 시작 반지름 — 「눈뭉치」 스킬이 키운다
   EAT: 0.9,        // 제 반지름의 이 배까지 먹는다. 그보다 큰 것은 벽이 된다
   GAIN: 0.4,       // 먹은 넓이를 이 비율로 더한다 → r' = √(r² + GAIN·ro²)
-  SPEED: 30,       // 기본 속도(단위/초) — 「튼튼한 팔」 스킬이 올린다
-  SPEED_DROP: 4,   // 반지름이 이만큼 늘 때마다 속도 분모가 1씩 는다(r=4면 절반)
+  // 🔴 Gim 실기기 피드백(08-05) — "작을 땐 너무 빠르고 클 땐 너무 느리다".
+  //    예전 30÷(1+r/4) 는 20 → 5.7 로 3.5배 차이였다. 시작을 낮추고 감쇠를 완만하게 해 좁혔다.
+  SPEED: 18,       // 기본 속도(단위/초) — 「튼튼한 팔」 스킬이 올린다
+  SPEED_DROP: 12,  // 반지름이 이만큼 늘 때마다 속도 분모가 1씩 는다
   PARTS_RATE: 0.1, // 판이 끝나면 점수의 이 비율이 조각이 된다
 };
 
@@ -637,16 +639,27 @@ function 그리기(cv, g) {
   둥근네모(ctx, ox, oy, t.W * s, t.H * s, 10 * (s / 4));
   ctx.fill();
 
-  // 바닥의 것들 — 먹을 수 있는 것에만 흰 테를 둘러 한눈에 갈리게 한다
+  // 바닥의 것들.
+  // 🔴 먹을 수 있는 것을 **어두운 테 + 맥박**으로 표시한다. 처음에는 흰 테였는데
+  //    들판이 옅은 하늘색이라 묻혀서 안 보였다(Gim 실기기 확인, 08-05).
+  //    못 먹는 것은 반대로 **흐리게** 깔아 신호를 두 방향에서 준다.
+  const 맥박 = 0.5 + 0.5 * Math.sin(g.time * 5); // 규칙이 아니라 보기용. 판 시간에 얹는다
   for (let i = 0; i < g.n; i++) {
     const k = KINDS[g.okind[i]];
     const cx = X(g.ox[i]), cy = Y(g.oy[i]), r = g.or[i] * s;
-    if (먹을수있나(g.r, g.or[i], t)) {
+    const 먹힘 = 먹을수있나(g.r, g.or[i], t);
+
+    if (먹힘) {
+      // 테가 알맹이보다 두꺼우면 눈송이(반지름 0.8)가 「구멍」처럼 보인다 — 알맹이에 맞춰 묶는다
+      const 두께 = Math.min((0.42 + 0.26 * 맥박) * s, r * 0.5);
       ctx.beginPath();
-      ctx.arc(cx, cy, r * 1.38, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,255,.5)";
-      ctx.fill();
+      ctx.arc(cx, cy, r + 두께 * 0.5 + 0.18 * s, 0, Math.PI * 2);
+      ctx.lineWidth = 두께;
+      ctx.strokeStyle = "#101b2e";
+      ctx.stroke();
     }
+
+    ctx.globalAlpha = 먹힘 ? 1 : 0.45; // 못 먹는 것은 뒤로 물린다
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = k.color;
@@ -654,18 +667,22 @@ function 그리기(cv, g) {
     ctx.lineWidth = Math.max(1, r * 0.16);
     ctx.strokeStyle = k.edge;
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // 캐릭터 — 눈덩이 뒤에 선다. 규칙에는 없고 보기용이다.
   const bx = X(g.x), by = Y(g.y), br = g.r * s;
-  const 뒤 = (g.r + 1.7) * s;
+  const 뒤 = (g.r + 2.1) * s;
   const px = bx - g.fx * 뒤, py = by - g.fy * 뒤;
   ctx.beginPath();
-  ctx.arc(px, py, 1.25 * s, 0, Math.PI * 2);
+  ctx.arc(px, py, 1.7 * s, 0, Math.PI * 2);
   ctx.fillStyle = "#25406b";
   ctx.fill();
+  ctx.lineWidth = 0.35 * s;
+  ctx.strokeStyle = "#0b1220";
+  ctx.stroke();
   ctx.beginPath();
-  ctx.arc(px + g.fx * 0.45 * s, py + g.fy * 0.45 * s, 0.6 * s, 0, Math.PI * 2);
+  ctx.arc(px + g.fx * 0.6 * s, py + g.fy * 0.6 * s, 0.8 * s, 0, Math.PI * 2);
   ctx.fillStyle = "#f0d3ad";
   ctx.fill();
 
@@ -673,11 +690,22 @@ function 그리기(cv, g) {
   if (앞x !== null) 구른각 += Math.hypot(g.x - 앞x, g.y - 앞y) / Math.max(0.5, g.r);
   앞x = g.x; 앞y = g.y;
 
+  // 🔴 내 눈덩이는 **한눈에 찾아져야 한다.** 먹을 것에도 어두운 테를 두르므로
+  //    눈덩이는 「밝은 테 + 그 바깥 어두운 테」 두 겹으로 구분한다(Gim 실기기 확인, 08-05).
+  // 🔴 두께를 raw 픽셀이 아니라 **판 배율(s)** 로 잡는다. 픽셀로 두면 고해상도 폰에서
+  //    같은 3px 이 더 얇아 보여 작을 때 눈덩이를 못 찾는다.
+  const 밝은테 = Math.max(1.3 * s, br * 0.14);
+  ctx.beginPath();
+  ctx.arc(bx, by, br + 밝은테 + 0.35 * s, 0, Math.PI * 2);
+  ctx.lineWidth = 0.7 * s;
+  ctx.strokeStyle = "#0b1220";
+  ctx.stroke();
+
   ctx.beginPath();
   ctx.arc(bx, by, br, 0, Math.PI * 2);
   ctx.fillStyle = 눈덩이색;
   ctx.fill();
-  ctx.lineWidth = Math.max(2, br * 0.1);
+  ctx.lineWidth = 밝은테;
   ctx.strokeStyle = 테두리색;
   ctx.stroke();
 
