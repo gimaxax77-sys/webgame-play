@@ -58,9 +58,6 @@ main { flex: 1; display: flex; flex-direction: column; }
 h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; }
 .sub { margin: 0 0 6px; color: var(--dim); font-size: .72rem; text-align: center; }
 
-.next-box { font-size: .72rem; color: var(--dim); }
-.next-box b { color: var(--accent); font-size: .84rem; }
-
 .topbtn {
   background: var(--panel); color: var(--text);
   border: 1px solid var(--line); border-radius: 8px;
@@ -69,6 +66,7 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 }
 .topbtn.danger { color: #e59a9a; border-color: #5d3a3a; }
 .topbtn:active { transform: scale(.96); }
+.topbtn b { color: var(--accent); font-weight: 600; }
 
 /* ── 현황 ───────────────────────────────── */
 .statusbar {
@@ -150,6 +148,26 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 }
 .primary:active { transform: scale(.97); }
 
+/* ── 들판 테마 고르기 ─────────────────────── */
+/* 판 위에 겹쳐 띄운다 — 아래 배치를 밀지 않아 엄지 위치가 그대로 남는다 */
+.themes { justify-content: flex-start; gap: 8px; padding: 12px; overflow-y: auto; }
+.theme-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; width: 100%; }
+.theme {
+  display: flex; align-items: center; gap: 6px;
+  min-height: 44px;   /* 탭 대상 바닥값 */
+  padding: 5px 6px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  font-family: inherit; font-size: .72rem; cursor: pointer; text-align: left;
+}
+.theme.on { border-color: var(--accent); }
+.theme.on .theme-name { color: var(--accent); }
+.theme-swatch {
+  flex: 0 0 auto; width: 42px; height: 28px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+}
+.theme-swatch i { width: 6px; height: 6px; border-radius: 50%; }
+
 /* ── 공방 ───────────────────────────────── */
 .panel { flex: 0 0 auto; margin-top: 8px; }
 .panel h2 {
@@ -191,7 +209,7 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 <body>
 <header class="topbar">
   <div class="topleft">
-    <span class="next-box" title="지금은 못 먹는 것 중 가장 작은 것">다음 <b id="next">눈송이</b></span>
+    <button type="button" id="theme-btn" class="topbtn" title="들판 테마 고르기">🎨 <b id="theme-name">밤 눈밭</b></button>
   </div>
   <h1>눈굴리기</h1>
   <div class="topright">
@@ -207,8 +225,8 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
       <span class="ball-unit">크기</span>
     </div>
     <div class="meta">
+      <span title="지금은 못 먹는 것 중 가장 작은 것">다음 <b id="next">눈송이</b></span>
       <span>최고 <b id="best">0</b></span>
-      <span id="eaten">0개</span>
       <span id="parts">◈ 0</span>
     </div>
   </section>
@@ -222,6 +240,12 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
   <div id="ctrl" class="ctrl">
     <section class="stage-wrap">
       <canvas id="stage" aria-label="눈밭"></canvas>
+
+      <div id="themes" class="over themes" hidden>
+        <strong>들판 테마</strong>
+        <div id="theme-list" class="theme-list"></div>
+        <button type="button" id="theme-close" class="primary">닫기</button>
+      </div>
 
       <div id="over" class="over" hidden>
         <strong id="over-title"></strong>
@@ -268,11 +292,12 @@ const TUNE = {
   TIME: 100,       // 제한 시간(초) — 「긴 하루」 스킬이 늘린다
   R0: 2,           // 눈덩이 시작 반지름 — 「눈뭉치」 스킬이 키운다
   EAT: 0.9,        // 제 반지름의 이 배까지 먹는다. 그보다 큰 것은 벽이 된다
-  GAIN: 0.4,       // 먹은 넓이를 이 비율로 더한다 → r' = √(r² + GAIN·ro²)
-  // 🔴 Gim 실기기 피드백(08-05) — "작을 땐 너무 빠르고 클 땐 너무 느리다".
-  //    예전 30÷(1+r/4) 는 20 → 5.7 로 3.5배 차이였다. 시작을 낮추고 감쇠를 완만하게 해 좁혔다.
-  SPEED: 18,       // 기본 속도(단위/초) — 「튼튼한 팔」 스킬이 올린다
-  SPEED_DROP: 12,  // 반지름이 이만큼 늘 때마다 속도 분모가 1씩 는다
+  // 🔴 Gim 실기기 피드백 2차(08-05) — "초반 속도 적당. 후반은 여전히 느리고 답답".
+  //    성장을 늦춰(0.4→0.30) 눈덩이가 화면을 덜 잡아먹게 하고, 감쇠도 더 완만하게 했다.
+  //    300판 실측 — 후반 속도 8.3→11.2(+35%) · 최종 크기 12.4→10.0 · 흡수 63%(천장 안 침).
+  GAIN: 0.30,      // 먹은 넓이를 이 비율로 더한다 → r' = √(r² + GAIN·ro²)
+  SPEED: 16.5,     // 기본 속도(단위/초) — 「튼튼한 팔」 스킬이 올린다
+  SPEED_DROP: 30,  // 반지름이 이만큼 늘 때마다 속도 분모가 1씩 는다
   PARTS_RATE: 0.1, // 판이 끝나면 점수의 이 비율이 조각이 된다
 };
 
@@ -449,6 +474,99 @@ function 먹는다(g, i, t) {
 
 { STEP };
 
+// 「눈굴리기」 들판 테마 — 색만 담는다. 규칙도 화면 코드도 여기에 들어오지 않는다
+//
+// 🔴 색만 바꾼다. 오브젝트 이름(눈송이·솔방울…)과 크기·규칙은 테마와 무관하다.
+//    그래서 테마를 바꿔도 밸런스·스트레스 결과가 달라지지 않는다.
+//
+// 각 테마가 담는 것
+//   들판   판 바탕
+//   테     판 테두리
+//   것들   오브젝트 6종의 [알맹이색, 빛색] — KINDS 와 같은 순서(작은 것부터)
+//   빛세기 앰비언트 발광의 세기(0이면 발광 없음)
+//   흐림   못 먹는 것의 불투명도
+//   공     눈덩이 [알맹이, 테, 빛]
+//   사람   캐릭터 [몸, 얼굴]
+
+const THEMES = [
+  {
+    id: "night", name: "밤 눈밭",
+    들판: "#131d33", 테: "#26314a", 빛세기: 0.55, 흐림: 0.3,
+    것들: [["#ffffff", "#7fd4ff"], ["#ffb02e", "#ffd98a"], ["#4fe3c1", "#a6fff0"],
+           ["#ff7a45", "#ffb08a"], ["#a98bff", "#d0c2ff"], ["#3ae37a", "#9dffbe"]],
+    공: ["#ffffff", "#6ec8ff", "#6ec8ff"], 사람: ["#25406b", "#f0d3ad"],
+  },
+  {
+    id: "dawn", name: "새벽",
+    들판: "#2b2440", 테: "#4a3d66", 빛세기: 0.5, 흐림: 0.32,
+    것들: [["#fff4f8", "#ffc7e0"], ["#ffc9a3", "#ffe3cd"], ["#9ad9ff", "#cceeff"],
+           ["#ff9ec4", "#ffcbe0"], ["#b39dff", "#dcd2ff"], ["#7fe3c0", "#c2fff0"]],
+    공: ["#fffaf6", "#ffb3d9", "#ffb3d9"], 사람: ["#4a3a63", "#ffd9b8"],
+  },
+  {
+    id: "aurora", name: "오로라",
+    들판: "#05080f", 테: "#112233", 빛세기: 0.85, 흐림: 0.25,
+    것들: [["#eafff8", "#5cffd8"], ["#7cff9e", "#2bff7a"], ["#37f5ff", "#00e0ff"],
+           ["#b06cff", "#8a2bff"], ["#ff4fd8", "#ff00c8"], ["#5effc0", "#00ffa0"]],
+    공: ["#ffffff", "#5cffd8", "#5cffd8"], 사람: ["#0f2233", "#ccddee"],
+  },
+  {
+    id: "day", name: "한낮 눈밭",
+    들판: "#dfeaf6", 테: "#a8bed6", 빛세기: 0, 흐림: 0.35,
+    것들: [["#ffffff", "#ffffff"], ["#e08a1e", "#e08a1e"], ["#0f9b8e", "#0f9b8e"],
+           ["#d9541f", "#d9541f"], ["#6b4fd0", "#6b4fd0"], ["#16794a", "#16794a"]],
+    공: ["#ffffff", "#0b6fb0", "#0b6fb0"], 사람: ["#1f3556", "#f0d3ad"],
+  },
+  {
+    id: "forest", name: "숲 바닥",
+    들판: "#17251a", 테: "#2c4030", 빛세기: 0.5, 흐림: 0.3,
+    것들: [["#f6ffe8", "#d4ff9e"], ["#ffc94a", "#ffe6a0"], ["#8ee06a", "#c6ffa8"],
+           ["#c9793f", "#f0b183"], ["#8c7ae6", "#c3b8ff"], ["#2fd97a", "#96ffc0"]],
+    공: ["#fbfff2", "#a8ff6e", "#a8ff6e"], 사람: ["#33291c", "#f0d3ad"],
+  },
+  {
+    id: "desert", name: "사막",
+    들판: "#3a2a1c", 테: "#5c452e", 빛세기: 0.45, 흐림: 0.32,
+    것들: [["#fff2d6", "#ffdca0"], ["#ffb638", "#ffd98a"], ["#e8734a", "#ffab8c"],
+           ["#d94f3d", "#ff9182"], ["#c9a227", "#f2dc84"], ["#7fbf6a", "#c3ffb0"]],
+    공: ["#fff6e6", "#ffc766", "#ffc766"], 사람: ["#4a2f1a", "#ffe0bb"],
+  },
+  {
+    id: "deepsea", name: "바다 속",
+    들판: "#04202e", 테: "#0b3a4f", 빛세기: 0.7, 흐림: 0.28,
+    것들: [["#e8ffff", "#7ff5ff"], ["#ffd24a", "#ffe89a"], ["#3ce0d0", "#8ffff2"],
+           ["#ff6f91", "#ffb3c6"], ["#8f7bff", "#c6bcff"], ["#5fff9e", "#b3ffcf"]],
+    공: ["#f2ffff", "#37e0ff", "#37e0ff"], 사람: ["#062c3d", "#ccddee"],
+  },
+  {
+    id: "lava", name: "용암",
+    들판: "#1d0b0b", 테: "#3d1a15", 빛세기: 0.75, 흐림: 0.3,
+    것들: [["#fff0d6", "#ffb35c"], ["#ffa32b", "#ffcf70"], ["#ff5f2e", "#ff9b66"],
+           ["#e02a1f", "#ff6f5c"], ["#ffd93d", "#fff08a"], ["#9b3bff", "#c98cff"]],
+    공: ["#fff6ea", "#ff8c42", "#ff8c42"], 사람: ["#2b1210", "#ffd9b8"],
+  },
+  {
+    id: "neon", name: "네온",
+    들판: "#0a0612", 테: "#2a1150", 빛세기: 0.9, 흐림: 0.24,
+    것들: [["#ffffff", "#ff4df0"], ["#ffe14d", "#ffe14d"], ["#00f0ff", "#00f0ff"],
+           ["#ff2bd1", "#ff2bd1"], ["#7a3bff", "#a06bff"], ["#3dff8e", "#3dff8e"]],
+    공: ["#ffffff", "#00f0ff", "#00f0ff"], 사람: ["#1a0b2e", "#ffd9f5"],
+  },
+  {
+    id: "paper", name: "그림책",
+    들판: "#f3ead8", 테: "#c9b894", 빛세기: 0, 흐림: 0.4,
+    것들: [["#ffffff", "#ffffff"], ["#e2892f", "#e2892f"], ["#2f8f86", "#2f8f86"],
+           ["#c25128", "#c25128"], ["#6a4fa8", "#6a4fa8"], ["#3d7a3a", "#3d7a3a"]],
+    공: ["#ffffff", "#2b2a26", "#2b2a26"], 사람: ["#2b2a26", "#e8c9a0"],
+  },
+];
+
+const 기본테마 = THEMES[0].id;
+
+function 테마찾기(id) {
+  return THEMES.find((t) => t.id === id) || THEMES[0];
+}
+
 // 「눈굴리기」 영구 스킬 — 판을 넘어 쌓인다. 화면을 전혀 모른다
 
 // 🔴 「눈뭉치」가 주력이다 — 시작 크기가 크면 큰 것을 일찍 먹어 판이 빨리 열린다.
@@ -524,6 +642,7 @@ function 판조율(record, tune = TUNE) {
 
 
 
+
 // 🔴 v1 은 턴제 퍼즐이던 시절의 저장본이다. 점수 자릿수가 달라(예전 40 ↔ 지금 120)
 //    그대로 읽으면 최고 기록이 엉뚱하게 낮게 나온다. 키를 올려 갈라 둔다.
 const 저장키 = "snowball.v2";
@@ -531,7 +650,7 @@ const 저장키 = "snowball.v2";
 function newRecord() {
   const skills = {};
   for (const s of SKILLS) skills[s.id] = 0;
-  return { parts: 0, best: 0, plays: 0, bestEaten: 0, skills };
+  return { parts: 0, best: 0, plays: 0, bestEaten: 0, theme: 기본테마, skills };
 }
 
 /** 판이 끝났을 때 기록을 갱신한다. 얻은 조각 수를 돌려준다. */
@@ -562,6 +681,8 @@ function 저장본읽기(raw) {
   r.best = 정수(s.best, 0);
   r.plays = 정수(s.plays, 0);
   r.bestEaten = 정수(s.bestEaten, 0);
+  // 모르는 테마 이름이 들어오면 기본값으로 떨어뜨린다 — 없는 색을 읽다 화면이 죽지 않게
+  if (THEMES.some((t) => t.id === s.theme)) r.theme = s.theme;
   if (s.skills && typeof s.skills === "object" && !Array.isArray(s.skills)) {
     for (const sk of SKILLS) r.skills[sk.id] = Math.min(sk.max, 정수(s.skills[sk.id], 0));
   }
@@ -589,18 +710,17 @@ function 불러오기() {
 
 
 
-const 들판색 = "#c7d9ea";
-const 눈덩이색 = "#ffffff";
-const 테두리색 = "#6ec8ff";
 
 function 화면잡기() {
   const id = (x) => document.getElementById(x);
   return {
     stage: id("stage"), ctrl: id("ctrl"),
-    size: id("size"), best: id("best"), eaten: id("eaten"), parts: id("parts"),
-    next: id("next"), timefill: id("timefill"), toast: id("toast"),
+    size: id("size"), best: id("best"), parts: id("parts"), next: id("next"),
+    timefill: id("timefill"), toast: id("toast"),
     over: id("over"), overTitle: id("over-title"), overText: id("over-text"),
     again: id("again"), restart: id("restart"), skills: id("skills"),
+    themeBtn: id("theme-btn"), themeName: id("theme-name"),
+    themes: id("themes"), themeList: id("theme-list"), themeClose: id("theme-close"),
   };
 }
 
@@ -625,88 +745,122 @@ function 자(cv, tune) {
   return { s, ox: (cv.width - tune.W * s) / 2, oy: (cv.height - tune.H * s) / 2 };
 }
 
-function 그리기(cv, g) {
+// ── 앰비언트 빛 ────────────────────────────────────────────
+// 🔴 매 프레임 오브젝트 134개에 그라데이션을 새로 만들면 폰에서 버겁다.
+//    종류별로 **한 번만** 그려 둔 그림을 찍어 쓴다. 테마나 배율이 바뀔 때만 다시 만든다.
+let 빛그림 = null, 빛열쇠 = "";
+
+function 빛준비(테마, s) {
+  const 열쇠 = `${테마.id}:${s.toFixed(2)}`;
+  if (빛열쇠 === 열쇠) return 빛그림;
+  빛열쇠 = 열쇠;
+  빛그림 = KINDS.map((k, i) => {
+    const r0 = k.r * s * 0.9, r1 = k.r * s + 2.8 * s;
+    const R = Math.ceil(r1) + 1;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = R * 2;
+    const c = cv.getContext("2d");
+    if (테마.빛세기 > 0) {
+      c.fillStyle = 테마.것들[i][1];
+      const 단계 = 20;
+      for (let n = 단계; n >= 1; n--) {
+        const d = r0 + (r1 - r0) * (n / 단계);
+        const t = 1 - (d - r0) / (r1 - r0);
+        c.globalAlpha = (테마.빛세기 * t * t) / 3.2;
+        c.beginPath(); c.arc(R, R, d, 0, Math.PI * 2); c.fill();
+      }
+      c.globalAlpha = 1;
+    }
+    return { cv, R };
+  });
+  return 빛그림;
+}
+
+/** 반지름이 늘 바뀌는 눈덩이는 그림으로 못 캐시한다. 한 프레임에 스무 겹이면 가볍다. */
+function 빛직접(ctx, cx, cy, r0, r1, 색, 세기) {
+  if (세기 <= 0) return;
+  ctx.fillStyle = 색;
+  const 단계 = 20;
+  for (let n = 단계; n >= 1; n--) {
+    const d = r0 + (r1 - r0) * (n / 단계);
+    const t = 1 - (d - r0) / (r1 - r0);
+    ctx.globalAlpha = (세기 * t * t) / 3.2;
+    ctx.beginPath(); ctx.arc(cx, cy, d, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+const 밝기 = (h) =>
+  (parseInt(h.slice(1, 3), 16) + parseInt(h.slice(3, 5), 16) + parseInt(h.slice(5, 7), 16)) / 3;
+
+function 그리기(cv, g, 테마id) {
   버퍼맞추기(cv);
   const ctx = cv.getContext("2d");
   const t = g.tune;
+  const th = 테마찾기(테마id);
   const { s, ox, oy } = 자(cv, t);
+  const 빛들 = 빛준비(th, s);
 
   ctx.clearRect(0, 0, cv.width, cv.height);
   const X = (x) => ox + x * s, Y = (y) => oy + y * s;
 
-  // 눈밭
-  ctx.fillStyle = 들판색;
+  ctx.fillStyle = th.들판;
   둥근네모(ctx, ox, oy, t.W * s, t.H * s, 10 * (s / 4));
   ctx.fill();
 
-  // 바닥의 것들.
-  // 🔴 먹을 수 있는 것을 **어두운 테 + 맥박**으로 표시한다. 처음에는 흰 테였는데
-  //    들판이 옅은 하늘색이라 묻혀서 안 보였다(Gim 실기기 확인, 08-05).
-  //    못 먹는 것은 반대로 **흐리게** 깔아 신호를 두 방향에서 준다.
-  const 맥박 = 0.5 + 0.5 * Math.sin(g.time * 5); // 규칙이 아니라 보기용. 판 시간에 얹는다
+  // 빛을 먼저 다 깔아 서로 겹쳐 번지게 한다
   for (let i = 0; i < g.n; i++) {
-    const k = KINDS[g.okind[i]];
+    if (!먹을수있나(g.r, g.or[i], t)) continue;
+    const sp = 빛들[g.okind[i]];
+    ctx.drawImage(sp.cv, X(g.ox[i]) - sp.R, Y(g.oy[i]) - sp.R);
+  }
+
+  // 🔴 못 먹는 것을 흐리게만 두면 어두운 들판에서 **통째로 사라진다** — 안 보이는 벽에 부딪힌다.
+  //    들판 밝기의 반대쪽 윤곽을 둘러 실루엣이 늘 남게 한다.
+  const 윤곽색 = 밝기(th.들판) > 128 ? "rgba(30,36,48,.55)" : "rgba(190,205,225,.55)";
+  for (let i = 0; i < g.n; i++) {
     const cx = X(g.ox[i]), cy = Y(g.oy[i]), r = g.or[i] * s;
     const 먹힘 = 먹을수있나(g.r, g.or[i], t);
-
-    if (먹힘) {
-      // 테가 알맹이보다 두꺼우면 눈송이(반지름 0.8)가 「구멍」처럼 보인다 — 알맹이에 맞춰 묶는다
-      const 두께 = Math.min((0.42 + 0.26 * 맥박) * s, r * 0.5);
-      ctx.beginPath();
-      ctx.arc(cx, cy, r + 두께 * 0.5 + 0.18 * s, 0, Math.PI * 2);
-      ctx.lineWidth = 두께;
-      ctx.strokeStyle = "#101b2e";
-      ctx.stroke();
-    }
-
-    ctx.globalAlpha = 먹힘 ? 1 : 0.45; // 못 먹는 것은 뒤로 물린다
+    ctx.globalAlpha = 먹힘 ? 1 : th.흐림;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = k.color;
+    ctx.fillStyle = th.것들[g.okind[i]][0];
     ctx.fill();
-    ctx.lineWidth = Math.max(1, r * 0.16);
-    ctx.strokeStyle = k.edge;
-    ctx.stroke();
     ctx.globalAlpha = 1;
+    if (!먹힘) {
+      ctx.lineWidth = Math.max(1, 0.22 * s);
+      ctx.strokeStyle = 윤곽색;
+      ctx.stroke();
+    }
   }
 
   // 캐릭터 — 눈덩이 뒤에 선다. 규칙에는 없고 보기용이다.
   const bx = X(g.x), by = Y(g.y), br = g.r * s;
   const 뒤 = (g.r + 2.1) * s;
   const px = bx - g.fx * 뒤, py = by - g.fy * 뒤;
+
+  // 🔴 눈덩이는 **한눈에 찾아져야 한다.** 빛 + 밝은 테 두 겹으로 다른 것들과 가른다.
+  빛직접(ctx, bx, by, br * 0.95, br + 3.4 * s, th.공[2], Math.max(0.4, th.빛세기));
+
   ctx.beginPath();
   ctx.arc(px, py, 1.7 * s, 0, Math.PI * 2);
-  ctx.fillStyle = "#25406b";
+  ctx.fillStyle = th.사람[0];
   ctx.fill();
-  ctx.lineWidth = 0.35 * s;
-  ctx.strokeStyle = "#0b1220";
-  ctx.stroke();
   ctx.beginPath();
   ctx.arc(px + g.fx * 0.6 * s, py + g.fy * 0.6 * s, 0.8 * s, 0, Math.PI * 2);
-  ctx.fillStyle = "#f0d3ad";
+  ctx.fillStyle = th.사람[1];
   ctx.fill();
 
-  // 눈덩이
   if (앞x !== null) 구른각 += Math.hypot(g.x - 앞x, g.y - 앞y) / Math.max(0.5, g.r);
   앞x = g.x; 앞y = g.y;
 
-  // 🔴 내 눈덩이는 **한눈에 찾아져야 한다.** 먹을 것에도 어두운 테를 두르므로
-  //    눈덩이는 「밝은 테 + 그 바깥 어두운 테」 두 겹으로 구분한다(Gim 실기기 확인, 08-05).
-  // 🔴 두께를 raw 픽셀이 아니라 **판 배율(s)** 로 잡는다. 픽셀로 두면 고해상도 폰에서
-  //    같은 3px 이 더 얇아 보여 작을 때 눈덩이를 못 찾는다.
-  const 밝은테 = Math.max(1.3 * s, br * 0.14);
-  ctx.beginPath();
-  ctx.arc(bx, by, br + 밝은테 + 0.35 * s, 0, Math.PI * 2);
-  ctx.lineWidth = 0.7 * s;
-  ctx.strokeStyle = "#0b1220";
-  ctx.stroke();
-
   ctx.beginPath();
   ctx.arc(bx, by, br, 0, Math.PI * 2);
-  ctx.fillStyle = 눈덩이색;
+  ctx.fillStyle = th.공[0];
   ctx.fill();
-  ctx.lineWidth = 밝은테;
-  ctx.strokeStyle = 테두리색;
+  // 두께를 raw 픽셀이 아니라 **판 배율(s)** 로 잡는다. 픽셀로 두면 고해상도 폰에서 더 얇아 보인다.
+  ctx.lineWidth = Math.max(1.3 * s, br * 0.14);
+  ctx.strokeStyle = th.공[1];
   ctx.stroke();
 
   // 구르는 것이 보이도록 무늬를 돌린다
@@ -714,7 +868,8 @@ function 그리기(cv, g) {
   ctx.beginPath();
   ctx.arc(bx, by, br, 0, Math.PI * 2);
   ctx.clip();
-  ctx.strokeStyle = "rgba(110,200,255,.55)";
+  ctx.strokeStyle = th.공[1];
+  ctx.globalAlpha = 0.45;
   ctx.lineWidth = Math.max(1, br * 0.09);
   for (let i = 0; i < 3; i++) {
     const a = 구른각 + (i * Math.PI * 2) / 3;
@@ -722,6 +877,7 @@ function 그리기(cv, g) {
     ctx.arc(bx + Math.cos(a) * br * 0.55, by + Math.sin(a) * br * 0.55, br * 0.3, 0, Math.PI * 2);
     ctx.stroke();
   }
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
@@ -741,7 +897,6 @@ function 현황갱신(els, g, record) {
   els.size.textContent = 점.toLocaleString("ko-KR");
   // 진행 중인 판이 최고 기록을 넘으면 그 자리에서 보여 준다 — 판이 끝나야 아는 것은 답답하다
   els.best.textContent = Math.max(record.best, 점).toLocaleString("ko-KR");
-  els.eaten.textContent = `${g.eaten}개`;
   els.parts.textContent = `◈ ${record.parts.toLocaleString("ko-KR")}`;
   const 남 = Math.max(0, g.time) / g.tune.TIME;
   els.timefill.style.width = `${(남 * 100).toFixed(1)}%`;
@@ -770,6 +925,23 @@ function 공방그리기(els, record, 누름) {
   }
 }
 
+function 테마목록그리기(els, 지금id, 누름) {
+  els.themeList.innerHTML = "";
+  for (const th of THEMES) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "theme" + (th.id === 지금id ? " on" : "");
+    // 색 견본을 함께 보여 준다 — 이름만으로는 어떤 색인지 알 수 없다
+    const 점들 = th.것들.slice(0, 4)
+      .map(([c]) => `<i style="background:${c}"></i>`).join("");
+    b.innerHTML = `<span class="theme-swatch" style="background:${th.들판}">${점들}</span>` +
+      `<span class="theme-name">${th.name}</span>`;
+    b.addEventListener("click", () => 누름(th.id));
+    els.themeList.appendChild(b);
+  }
+  els.themeName.textContent = 테마찾기(지금id).name;
+}
+
 let 알림타이머 = 0;
 function 알림(els, 글, 좋음 = false) {
   els.toast.textContent = 글;
@@ -787,6 +959,7 @@ function 끝화면(els, g, 조각) {
 }
 
 // 「눈굴리기」 입력과 판 진행 — 규칙은 world.js, 그리기는 ui.js 가 맡는다
+
 
 
 
@@ -811,8 +984,18 @@ function 새판() {
   끌기 = null;
   쌓인시간 = 0;
   els.over.hidden = true;
+  els.themes.hidden = true;
   공방그리기(els, record, 스킬누름);
+  테마목록그리기(els, record.theme, 테마누름);
   현황갱신(els, game, record);
+}
+
+// 테마는 색만 바꾼다 — 판을 새로 시작하지 않고 그 자리에서 바뀐다
+function 테마누름(id) {
+  record.theme = id;
+  저장(record);
+  테마목록그리기(els, record.theme, 테마누름);
+  알림(els, `${테마찾기(id).name} 들판`, true);
 }
 
 function 판끝() {
@@ -855,7 +1038,7 @@ function 프레임(now) {
     현황갱신(els, game, record);
     if (game.over) 판끝();
   }
-  if (game) 그리기(els.stage, game);
+  if (game) 그리기(els.stage, game, record.theme);
 }
 
 // ── 입력: 누른 채 끌기 ───────────────────────────────────
@@ -918,6 +1101,8 @@ addEventListener("blur", () => { 눌린키.clear(); 입력x = 입력y = 0; });
 
 els.restart.addEventListener("click", 새판);
 els.again.addEventListener("click", 새판);
+els.themeBtn.addEventListener("click", () => { els.themes.hidden = !els.themes.hidden; });
+els.themeClose.addEventListener("click", () => { els.themes.hidden = true; });
 
 새판();
 requestAnimationFrame(프레임);

@@ -146,21 +146,28 @@ h1 {
 .num.n128 { background: #c39b1e; color: #12141a; }
 
 /* 「눈굴리기」 — 밝을수록 깊은 눈. 파란 점이 눈덩이, 갈색이 다 먹은 흙바닥 */
-.thumb-snow { grid-template-columns: repeat(4, 1fr); width: 100%; max-width: 180px; gap: 4px; }
-.sn {
-  display: grid; place-items: center;
-  aspect-ratio: 1;
-  border-radius: 7px;
-  font-size: .62rem; font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: #0e1420;
-  background: #22262f;
+.thumb-snow {
+  position: relative;
+  display: block;
+  width: 100%; max-width: 180px; aspect-ratio: 1;
+  border-radius: 10px;
+  background: #131d33;                 /* 「밤 눈밭」 테마의 들판색 */
 }
-.sn.s1 { background: #7d90ad; }
-.sn.s2 { background: #a8bdd6; }
-.sn.s3 { background: #d3e4f5; }
-.sn.s0 { background: #2b2118; }                                  /* 다 먹은 흙바닥 */
-.sn.sr { background: #39404f; box-shadow: inset 0 0 0 2px #4b5468; } /* 바위 */
+/* 원 하나. 위치(--x,--y)·지름(--d)·색(--c)만 인라인으로 받는다 */
+.sn {
+  position: absolute;
+  left: var(--x); top: var(--y);
+  width: var(--d); height: var(--d);
+  margin: calc(var(--d) / -2);
+  border-radius: 50%;
+  background: var(--c);
+}
+.sn.lit { box-shadow: 0 0 10px 3px var(--c); }          /* 먹을 수 있는 것 — 앰비언트 */
+.sn.big { opacity: .34; box-shadow: inset 0 0 0 2px rgba(190,205,225,.5); } /* 아직 벽 */
+.sn.ball {
+  background: #fff;
+  box-shadow: 0 0 0 3px #6ec8ff, 0 0 16px 6px rgba(110,200,255,.55);
+}
 .sn.sb { background: #16203a; color: #6ec8ff; box-shadow: inset 0 0 0 2px #6ec8ff; } /* 눈덩이 */
 
 /* ── 꼬리 ─────────────────────────────── */
