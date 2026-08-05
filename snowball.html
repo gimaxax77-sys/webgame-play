@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>눈굴리기 — 굴려서 길 만들기</title>
-<meta name="description" content="눈덩이를 굴려 눈을 먹고 키우는 퍼즐. 커질수록 무거워져 조금씩만 움직입니다. 설치 없이 브라우저에서 바로.">
+<title>눈굴리기 — 굴려서 키우기</title>
+<meta name="description" content="눈덩이를 밀고 다니며 바닥의 것들을 흡수해 키웁니다. 자기보다 작은 것만 먹히고, 커질수록 느려집니다. 설치 없이 브라우저에서 바로.">
 <style>
 /* 「눈굴리기」 화면 — 모바일 세로·한손 기준. 눈밭이라 차갑고 밝은 쪽으로 잡았다 */
 
@@ -16,7 +16,6 @@
   --dim: #93a2ba;
   --accent: #6ec8ff;
   --warn: #ff9a6e;
-  --gap: 5px;
 }
 
 * { box-sizing: border-box; }
@@ -37,14 +36,16 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  /* 연달아 굴릴 때 숫자가 선택돼 파랗게 물드는 것을 막는다 */
+  /* 끌고 다닐 때 글자가 선택돼 파랗게 물드는 것을 막는다 */
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 /* 남는 높이는 main 첫 자식(.statusbar)의 margin-top:auto 로 위 한 곳에 몬다.
-   세 게임과 같은 규약이다 — main 에 justify-content 를 두지 않는다. */
+   네 게임이 같은 규약이다 — main 에 justify-content 를 두지 않는다.
+   이 게임은 조작 영역(.ctrl)이 남는 높이를 먼저 먹으므로 대개 0 이 되지만,
+   화면이 아주 길 때 규약이 그대로 서게 남겨 둔다. */
 main { flex: 1; display: flex; flex-direction: column; }
 
 /* ── 최상단 ─────────────────────────────── */
@@ -57,9 +58,8 @@ main { flex: 1; display: flex; flex-direction: column; }
 h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; }
 .sub { margin: 0 0 6px; color: var(--dim); font-size: .72rem; text-align: center; }
 
-.reach-box { font-size: .72rem; color: var(--dim); }
-.reach-box b { color: var(--accent); font-variant-numeric: tabular-nums; font-size: .84rem; }
-.reach-box b.low { color: var(--warn); }
+.next-box { font-size: .72rem; color: var(--dim); }
+.next-box b { color: var(--accent); font-size: .84rem; }
 
 .topbtn {
   background: var(--panel); color: var(--text);
@@ -84,8 +84,18 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 .meta { display: flex; align-items: center; gap: 10px; font-size: .72rem; color: var(--dim); }
 .meta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* ── 남은 시간 ───────────────────────────── */
+.timebar {
+  flex: 0 0 auto;
+  height: 8px; margin-top: 5px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  overflow: hidden;
+}
+.timebar i { display: block; height: 100%; width: 100%; background: var(--accent); }
+.timebar i.low { background: var(--warn); }
+
 /* 알림은 자기 줄(고정 높이)에 둔다 — 떴다 사라질 때 아래가 밀리지 않게 */
-.notice { height: 22px; display: flex; align-items: center; justify-content: center; margin: 6px 0 2px; }
+.notice { height: 22px; display: flex; align-items: center; justify-content: center; margin: 5px 0 2px; }
 .toast {
   font-size: .74rem; color: var(--dim);
   background: var(--panel); border: 1px solid var(--line);
@@ -96,54 +106,32 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.good { color: var(--accent); border-color: var(--accent); }
 
-/* ── 눈밭 ───────────────────────────────── */
-.stage-wrap { position: relative; }
-
-.board {
-  display: grid;
-  grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr));
-  /* 🔴 행 높이를 내용이 아니라 판이 정하게 한다. 이게 없으면 판 높이만 고정되고
-     행은 내용에 맞춰 나뉘어 칸이 직사각형이 된다(「2048」에서 실제로 겪은 것). */
-  grid-auto-rows: 1fr;
-  aspect-ratio: 1;
-  gap: var(--gap);
-  padding: var(--gap);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  /* 쓸어 넘기는 동작이 화면 스크롤·당겨서 새로고침으로 새지 않게 한다 */
+/* ── 조작 영역 ───────────────────────────── */
+/* 🔴 판보다 넓게 잡는다. 끌기를 판 위에서만 받으면 엄지가 아래에 있을 때 통째로 헛돈다.
+   touch-action:none 이 없으면 끌기가 화면 스크롤·당겨서 새로고침으로 샌다. */
+.ctrl {
+  flex: 1 1 0; min-height: 0;
+  display: flex; flex-direction: column; gap: 8px;
   touch-action: none;
 }
 
-.cell {
+.stage-wrap { position: relative; flex: 1 1 0; min-height: 180px; }
+
+/* 캔버스는 남는 자리를 그대로 채우고, 판은 그리기 쪽에서 가운데 맞춰 축소한다.
+   그래서 화면 높이에 맞춘 마법의 숫자가 필요 없다. */
+#stage {
+  display: block; width: 100%; height: 100%;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel);
+}
+
+.touchpad {
+  flex: 0 0 auto;
+  min-height: 46px;   /* 엄지가 놓이는 자리. 이 아래로 내려가면 좁아서 못 쓴다 */
   display: flex; align-items: center; justify-content: center;
-  border-radius: 6px;
-  font-size: .78rem; font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  /* 글자가 칸 크기를 밀어내지 못하게 못 박는다 — 위 grid-auto-rows 와 한 쌍이다 */
-  min-width: 0; min-height: 0; overflow: hidden;
-  transition: background-color .12s, color .12s;
+  border: 1px dashed var(--line); border-radius: 12px;
+  color: var(--dim); font-size: .68rem;
 }
-
-/* 눈 깊이 — 색과 숫자 두 축으로 준다. 색 하나로는 사람이 단계를 못 센다 */
-.cell.snow { color: #0e1420; }
-.cell.snow.d1 { background: #7d90ad; }
-.cell.snow.d2 { background: #a8bdd6; }
-.cell.snow.d3 { background: #d3e4f5; }
-.cell.snow.d4 { background: #eaf4ff; }
-.cell.snow.d5 { background: #ffffff; }
-.cell.bare { background: #2b2118; color: transparent; }   /* 눈을 다 먹은 흙바닥 */
-.cell.rock { background: #39404f; color: transparent; box-shadow: inset 0 0 0 2px #4b5468; }
-
-/* 눈덩이가 있는 칸 */
-.cell.ball {
-  box-shadow: inset 0 0 0 3px var(--accent), 0 0 12px rgba(110, 200, 255, .5);
-  color: var(--accent);
-}
-.cell.ball.bare::after,
-.cell.ball.snow::after { content: "●"; font-size: 1.05rem; color: var(--accent); }
-.cell.ball { position: relative; }
-.cell.ball::after { position: absolute; }
 
 /* 끝 화면 */
 .over {
@@ -162,40 +150,8 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 }
 .primary:active { transform: scale(.97); }
 
-/* ── 방향 패드 ───────────────────────────── */
-/* 엄지가 닿는 자리에 둔다. 쓸기만 두면 판 밖에서 쓸었을 때 조작이 통째로 헛돈다 */
-.pad {
-  flex: 0 0 auto;
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-areas: ".  up    ." "left . right" ".  down  .";
-  gap: 6px;
-  justify-items: center;
-}
-.dirbtn.up { grid-area: up; }
-.dirbtn.left { grid-area: left; }
-.dirbtn.right { grid-area: right; }
-.dirbtn.down { grid-area: down; }
-.dirbtn {
-  width: 100%; max-width: 96px;
-  min-height: 46px;   /* 탭 대상 최소 크기. 이 아래로 내려가면 눌리지 않는다 */
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  background: var(--panel); color: var(--text);
-  border: 1px solid var(--line); border-radius: 12px;
-  font-family: inherit; cursor: pointer;
-}
-.dirbtn i { font-style: normal; font-size: .9rem; color: var(--dim); }
-.dirbtn em {
-  font-style: normal; font-weight: 700; font-size: 1rem;
-  color: var(--accent); font-variant-numeric: tabular-nums;
-}
-.dirbtn[aria-disabled="true"] { opacity: .3; }
-.dirbtn[aria-disabled="true"] i { color: var(--dim); }
-.dirbtn:not([aria-disabled="true"]):active { transform: scale(.95); border-color: var(--accent); }
-
 /* ── 공방 ───────────────────────────────── */
-.panel { flex: 0 0 auto; margin-top: 10px; }
+.panel { flex: 0 0 auto; margin-top: 8px; }
 .panel h2 {
   display: flex; align-items: center; gap: 6px;
   font-size: .74rem; margin: 0 0 4px; color: var(--dim); font-weight: 600;
@@ -225,7 +181,7 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 .shop:active { transform: scale(.96); }
 
 /* ── 규칙 ───────────────────────────────── */
-.howto { margin-top: 10px; font-size: .74rem; color: var(--dim); }
+.howto { margin-top: 8px; font-size: .74rem; color: var(--dim); }
 .howto summary { cursor: pointer; padding: 4px 0; }
 .howto ul { margin: 6px 0; padding-left: 18px; }
 .howto li { margin-bottom: 4px; }
@@ -235,52 +191,48 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
 <body>
 <header class="topbar">
   <div class="topleft">
-    <span class="reach-box" title="한 수에 굴러갈 수 있는 칸 수">기동력 <b id="reach">5칸</b></span>
+    <span class="next-box" title="지금은 못 먹는 것 중 가장 작은 것">다음 <b id="next">눈송이</b></span>
   </div>
   <h1>눈굴리기</h1>
   <div class="topright">
     <button type="button" id="restart" class="topbtn danger">새 판</button>
   </div>
 </header>
-<p class="sub">눈을 먹으며 굴리십시오. <strong>커질수록 조금씩만</strong> 움직입니다.</p>
+<p class="sub">눌러서 <strong>끌면</strong> 그쪽으로 밉니다. <strong>자기보다 작은 것</strong>만 먹힙니다.</p>
 
 <main>
   <section class="statusbar" aria-label="현황">
     <div class="ball-box">
-      <span class="ball-num" id="ball">0</span>
-      <span class="ball-unit">눈덩이</span>
+      <span class="ball-num" id="size">20</span>
+      <span class="ball-unit">크기</span>
     </div>
     <div class="meta">
       <span>최고 <b id="best">0</b></span>
-      <span id="moves">0수</span>
+      <span id="eaten">0개</span>
       <span id="parts">◈ 0</span>
     </div>
   </section>
 
+  <div class="timebar" aria-hidden="true"><i id="timefill"></i></div>
+
   <div class="notice"><span id="toast" class="toast" role="status" aria-live="polite"></span></div>
 
-  <section class="stage-wrap">
-    <!-- 쓸어 넘기기가 화면 스크롤로 새지 않게 touch-action 을 CSS에서 none 으로 둔다 -->
-    <div id="board" class="board" aria-label="눈밭"></div>
+  <!-- 🔴 조작 영역을 판보다 넓게 잡는다. 끌기를 판 위에서만 받으면, 엄지가 자연스럽게
+       놓이는 아래쪽에서 끌었을 때 조작이 통째로 헛돈다(「2048」에서 실제로 겪은 것). -->
+  <div id="ctrl" class="ctrl">
+    <section class="stage-wrap">
+      <canvas id="stage" aria-label="눈밭"></canvas>
 
-    <div id="over" class="over" hidden>
-      <strong id="over-title"></strong>
-      <p id="over-text"></p>
-      <div class="over-btns">
-        <button type="button" id="again" class="primary">새 판</button>
+      <div id="over" class="over" hidden>
+        <strong id="over-title"></strong>
+        <p id="over-text"></p>
+        <div class="over-btns">
+          <button type="button" id="again" class="primary">새 판</button>
+        </div>
       </div>
-    </div>
-  </section>
-
-  <!-- 🔴 방향 패드를 따로 둔다. 쓸기를 판 위에서만 받으면, 엄지가 자연스럽게 놓이는
-       아래쪽에서 쓸었을 때 조작이 통째로 헛돈다(「2048」에서 실제로 겪은 것).
-       패드에는 그 방향으로 몇 칸 갈 수 있는지를 적어 머리로 세지 않아도 되게 한다. -->
-  <section class="pad" aria-label="굴릴 방향">
-    <button type="button" class="dirbtn up"    data-dir="up"    aria-label="위로 굴리기"><i>▲</i><em id="n-up"></em></button>
-    <button type="button" class="dirbtn left"  data-dir="left"  aria-label="왼쪽으로 굴리기"><i>◀</i><em id="n-left"></em></button>
-    <button type="button" class="dirbtn right" data-dir="right" aria-label="오른쪽으로 굴리기"><i>▶</i><em id="n-right"></em></button>
-    <button type="button" class="dirbtn down"  data-dir="down"  aria-label="아래로 굴리기"><i>▼</i><em id="n-down"></em></button>
-  </section>
+    </section>
+    <div class="touchpad">여기서 끌어도 됩니다</div>
+  </div>
 
   <section class="panel">
     <h2>공방 <span class="hint">판이 끝난 뒤 올립니다</span></h2>
@@ -290,214 +242,237 @@ h1 { margin: 0; font-size: 1.15rem; letter-spacing: .14em; white-space: nowrap; 
   <details class="howto">
     <summary>규칙 보기</summary>
     <ul>
-      <li>눈덩이를 <strong>상하좌우</strong>로 굴립니다. 판을 쓸거나 아래 화살표를 누르십시오.</li>
-      <li>눈이 있는 칸으로 <strong>계속 굴러가고</strong>, 흙바닥·바위·벽을 만나면 그 앞에서 멈춥니다.</li>
-      <li>지날 때마다 그 칸의 눈을 <strong>한 겹</strong> 먹습니다. 칸에 적힌 숫자가 <strong>남은 겹 수</strong>입니다.</li>
-      <li>눈을 다 먹은 칸은 <strong>흙바닥</strong>이 되어 더는 지날 수 없습니다.</li>
-      <li>🔴 <strong>커질수록 무거워집니다.</strong> 눈덩이가 10 커질 때마다 한 수에 갈 수 있는 칸이 하나씩 줄어듭니다.</li>
-      <li>어느 쪽으로도 굴러가지 않으면 그 판은 끝입니다.</li>
-      <li>판이 끝나면 눈덩이 크기의 <strong>10%가 조각</strong>이 됩니다. 조각으로 <strong>공방</strong>에서 영구 스킬을 올립니다.</li>
+      <li>화면을 <strong>누른 채 끌면</strong> 그 방향으로 눈덩이를 밉니다. 살짝 끌면 천천히 갑니다.</li>
+      <li>바닥의 것에 닿으면 <strong>자기보다 작은 것만</strong> 흡수합니다.</li>
+      <li>못 먹는 것은 <strong>벽</strong>입니다. 눈덩이가 커지면 그때 먹을 수 있게 됩니다.</li>
+      <li>크기는 <strong>넓이로</strong> 더해집니다 — 커질수록 같은 것을 먹어도 덜 큽니다.</li>
+      <li>🔴 <strong>커질수록 느려집니다.</strong> 더 먹을지 더 돌아다닐지가 이 게임의 전부입니다.</li>
+      <li>제한 시간이 끝나면 그 판이 끝납니다. 다 먹으면 그 자리에서 끝납니다.</li>
+      <li>판이 끝나면 크기의 <strong>10%가 조각</strong>이 됩니다. 조각으로 <strong>공방</strong>에서 영구 스킬을 올립니다.</li>
       <li>기록·조각·스킬은 이 브라우저에 저장됩니다.</li>
     </ul>
   </details>
 </main>
 <script type="module">
-// 「눈굴리기」 조율값 — 값의 출처를 한 곳에만 둔다. 규칙 함수는 이 표를 인자로 받는다
+// 「눈굴리기」 조율값 — 값의 출처를 한 곳에만 둔다. 규칙·화면·하네스가 모두 이 표를 본다
 
-// 🔴 이 게임의 축은 **커지고 싶다 ↔ 커지면 못 움직인다** 하나다.
-//    REACH_BASE 와 REACH_DROP 이 그 긴장을 만드는 두 값이고, 나머지는 거들 뿐이다.
-//    두 값은 짝으로만 의미가 있다 — 하나만 바꾸면 난이도가 통째로 달라진다(LESSONS 1.4).
+// 🔴 규칙은 화면 주사율과 무관하게 이 간격으로만 돈다.
+//    이게 고정이라야 캔버스 없이 헤드리스로 돌릴 수 있고, 100만 판 스트레스가 가능해진다.
+const STEP = 1 / 60;
+
+// 🔴 이 게임의 축은 **더 먹고 싶다 ↔ 커지면 느려진다** 하나다.
+//    SPEED 와 SPEED_DROP 이 그 긴장을 만드는 짝이고, TIME 이 판을 끊는다.
+//    ⚠️ 아래는 **첫 시뮬레이션 전의 출발값**이다. 실측으로 다시 정한다(LESSONS 1.3).
 const TUNE = {
-  // 판 한 변의 칸 수. 🔴 감으로 고르지 않고 5·6·7·8을 각 4,000판 재서 정했다(2026-08-02).
-  //    평균 수 9 / 12 / 16 / 20, 평균 크기 25 / 32 / 39 / 45.
-  //    6×6은 12수라 너무 짧고, 8×8은 칸이 좁아 눈 깊이 숫자가 답답하다.
-  //    이 게임은 탭이 아니라 **스와이프** 조작이라 칸이 작아져도 조작에 지장이 없다.
-  SIZE: 7,
-  DEPTH_MIN: 1, // 눈 깊이 최솟값
-  DEPTH_MAX: 3, // 눈 깊이 최댓값 — 「다진 눈」 스킬이 올린다
-  ROCK_RATE: 0.08, // 바위가 될 확률 — 「길트기」 스킬이 낮춘다
-  REACH_BASE: 5, // 기동력 기본값(한 수에 굴러갈 수 있는 최대 칸 수) — 「눈삽」이 올린다
-  REACH_DROP: 10, // 크기가 이만큼 늘 때마다 기동력이 1 줄어든다
-  REACH_MIN: 1, // 아무리 커져도 이만큼은 움직인다. 0이면 판이 스스로 끝나 버린다
-  PARTS_RATE: 0.1, // 판이 끝나면 크기의 이만큼이 조각이 된다
+  W: 100, H: 140,  // 판 크기(논리 단위). 화면에 통째로 들어간다 — 카메라가 없다
+  TIME: 100,       // 제한 시간(초) — 「긴 하루」 스킬이 늘린다
+  R0: 2,           // 눈덩이 시작 반지름 — 「눈뭉치」 스킬이 키운다
+  EAT: 0.9,        // 제 반지름의 이 배까지 먹는다. 그보다 큰 것은 벽이 된다
+  GAIN: 0.4,       // 먹은 넓이를 이 비율로 더한다 → r' = √(r² + GAIN·ro²)
+  SPEED: 30,       // 기본 속도(단위/초) — 「튼튼한 팔」 스킬이 올린다
+  SPEED_DROP: 4,   // 반지름이 이만큼 늘 때마다 속도 분모가 1씩 는다(r=4면 절반)
+  PARTS_RATE: 0.1, // 판이 끝나면 점수의 이 비율이 조각이 된다
 };
 
-// 굴릴 수 있는 방향. 순서 자체에 의미는 없다(막힘 검사에서만 쓴다).
-const DIRS = ["up", "down", "left", "right"];
+// 바닥에 깔리는 것들. 작은 것부터 먹히면서 길이 열린다 — 크기 차이 자체가 진행도다.
+const KINDS = [
+  { name: "눈송이", r: 0.8, n: 50, color: "#ffffff", edge: "#aebfd4" },
+  { name: "솔방울", r: 1.3, n: 32, color: "#b98a58", edge: "#7d5a34" },
+  { name: "돌멩이", r: 2.0, n: 23, color: "#9aa3ad", edge: "#666e79" },
+  { name: "통나무", r: 3.0, n: 14, color: "#8b5a2b", edge: "#5c3a1a" },
+  { name: "바위",   r: 4.3, n: 9,  color: "#6b7280", edge: "#454b55" },
+  { name: "나무",   r: 6.0, n: 6,  color: "#2f6f4e", edge: "#1c452f" },
+];
 
-// 「눈굴리기」 판 규칙 — 굴리기·먹기·끝남 판정. 화면을 전혀 모른다
+const 총개수 = KINDS.reduce((a, k) => a + k.n, 0);
 
-// 칸 값의 뜻. 판은 길이 size*size 의 평평한 배열이다
-// (2차원 배열 대신 평평하게 둔 이유는 100만 판 하네스에서 복사 비용을 줄이기 위해서다).
-const 바위 = -1;
-const 맨바닥 = 0; // 눈을 다 먹어 흙이 드러난 칸. 더는 지날 수 없다
-
-// 🔴 지날 때마다 깊이를 **1씩만** 먹는다. 한 번에 통째로 먹지 않는다.
-//    처음엔 통째로 먹게 만들었더니 36칸짜리 판이 8수에 소진돼, 정책 4종·스킬 3단계가
-//    **전부 평균 8수로 똑같이** 나왔다(실측). 무엇을 해도 결과가 같으면 판단이 없는 게임이다.
-//    1씩 먹게 하니 깊이 3인 칸이 "세 번 지날 수 있는 길"이 되어 판이 길어지고,
-//    「깊은 길을 아껴 둘 것인가」라는 판단이 생긴다.
-const 한번에먹는양 = 1;
-
-// 방향 → [행 증가, 열 증가]
-const 이동 = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
-
-/** 판에 남아 있는 눈의 총합 */
-function 눈총합(cells) {
-  let s = 0;
-  for (let i = 0; i < cells.length; i++) if (cells[i] > 0) s += cells[i];
-  return s;
+// 「눈굴리기」 규칙 — 고정 간격으로 한 스텝씩 굴린다. 화면을 전혀 모른다
+/** 커질수록 느려진다. 이 게임의 유일한 압력이다. */
+function 속도(r, tune = TUNE) {
+  return tune.SPEED / (1 + r / tune.SPEED_DROP);
 }
 
-/** 🔴 이 게임의 심장 — 눈덩이가 클수록 한 수에 갈 수 있는 칸이 줄어든다 */
-function 기동력(ball, tune = TUNE) {
-  return Math.max(tune.REACH_MIN, tune.REACH_BASE - Math.floor(ball / tune.REACH_DROP));
+/** 제 반지름의 EAT 배까지만 먹는다. 그보다 큰 것은 벽이다. */
+function 먹을수있나(반지름, 것의반지름, tune = TUNE) {
+  return 것의반지름 <= 반지름 * tune.EAT;
 }
 
-/** 그 방향으로 몇 칸 굴러갈 수 있는지 센다(판을 바꾸지 않는다).
- *  눈이 있는 칸으로만 굴러가고, 벽·바위·맨바닥을 만나면 그 앞에서 멈춘다. */
-function 굴릴칸수(cells, size, pos, dir, reach) {
-  const [dr, dc] = 이동[dir];
-  let r = (pos / size) | 0;
-  let c = pos % size;
-  let n = 0;
-  while (n < reach) {
-    r += dr;
-    c += dc;
-    if (r < 0 || r >= size || c < 0 || c >= size) break;
-    if (cells[r * size + c] <= 0) break; // 바위(-1) 또는 맨바닥(0)
-    n++;
+function 점수(g) {
+  return Math.round(g.r * 10);
+}
+
+/** 지금 못 먹는 것 중 가장 작은 것. 화면에 「다음 목표」로 띄운다. 없으면 null */
+function 다음목표(g) {
+  let 최소 = Infinity, ki = -1;
+  for (let i = 0; i < g.n; i++) {
+    if (먹을수있나(g.r, g.or[i], g.tune)) continue;
+    if (g.or[i] < 최소) { 최소 = g.or[i]; ki = g.okind[i]; }
   }
-  return n;
+  return ki < 0 ? null : KINDS[ki];
 }
 
-/** 네 방향 어디로도 한 칸도 못 가면 판이 끝난다 */
-function 막혔나(game, tune = TUNE) {
-  const reach = 기동력(game.ball, tune);
-  for (const d of DIRS) {
-    if (굴릴칸수(game.cells, game.size, game.pos, d, reach) > 0) return false;
-  }
-  return true;
-}
-
-/** 새 판. 🔴 rand 를 인자로 받는다 — 하네스가 씨앗 난수를 끼워 넣을 수 있어야 한다(LESSONS 5.10) */
+/**
+ * 판을 만든다. 오브젝트는 움직이지 않으므로 형 배열에 담고 자리 교체로 지운다.
+ * 🔴 rand 를 인자로 받는다 — 하네스가 씨앗 난수를 끼워 넣어야 깨진 판을 재현할 수 있다.
+ */
 function newGame(tune = TUNE, rand = Math.random) {
-  const size = tune.SIZE;
-  const 깊이폭 = tune.DEPTH_MAX - tune.DEPTH_MIN + 1;
-  const cells = new Array(size * size);
-  for (let i = 0; i < cells.length; i++) {
-    cells[i] = rand() < tune.ROCK_RATE ? 바위 : tune.DEPTH_MIN + ((rand() * 깊이폭) | 0);
-  }
+  const ox = new Float64Array(총개수);
+  const oy = new Float64Array(총개수);
+  const or = new Float64Array(총개수);
+  const okind = new Uint8Array(총개수);
+  let n = 0;
 
-  // 🔴 시작 칸은 **적어도 한 방향으로 굴러갈 수 있는** 눈 칸 중에서 고른다.
-  //    아무 칸이나 고르면 첫 수도 못 두고 끝나는 판이 나온다(LESSONS 1.1 — 진행 동작을 보장한다).
-  const reach0 = 기동력(0, tune);
-  const 후보 = [];
-  for (let i = 0; i < cells.length; i++) {
-    if (cells[i] <= 0) continue;
-    for (const d of DIRS) {
-      if (굴릴칸수(cells, size, i, d, reach0) > 0) {
-        후보.push(i);
+  const bx = tune.W / 2, by = tune.H / 2;
+
+  // 큰 것부터 놓는다 — 자리가 넉넉할 때 놓아야 큰 것이 통째로 빠지지 않는다
+  for (let ki = KINDS.length - 1; ki >= 0; ki--) {
+    const k = KINDS[ki];
+    for (let c = 0; c < k.n; c++) {
+      for (let 시도 = 0; 시도 < 40; 시도++) {
+        const x = k.r + rand() * (tune.W - 2 * k.r);
+        const y = k.r + rand() * (tune.H - 2 * k.r);
+        // 시작 자리는 비워 둔다 — 시작하자마자 큰 것에 끼면 판이 통째로 죽는다
+        const dbx = x - bx, dby = y - by;
+        if (dbx * dbx + dby * dby < (tune.R0 + k.r + 3) ** 2) continue;
+        let 겹침 = false;
+        for (let i = 0; i < n; i++) {
+          const dx = x - ox[i], dy = y - oy[i];
+          if (dx * dx + dy * dy < (k.r + or[i] + 0.6) ** 2) { 겹침 = true; break; }
+        }
+        if (겹침) continue;
+        ox[n] = x; oy[n] = y; or[n] = k.r; okind[n] = ki; n++;
         break;
       }
+      // 40번 시도해도 자리가 없으면 그 하나는 놓지 않는다. 무한 반복을 만들지 않는다.
     }
   }
-  // 후보가 없는 판(바위투성이)은 아주 드물지만 원리상 가능하다. 눈 칸 아무 데나 두고 즉시 끝낸다.
-  let pos = 후보.length ? 후보[(rand() * 후보.length) | 0] : cells.findIndex((v) => v > 0);
 
-  const game = {
-    size,
-    cells,
-    pos,
-    ball: 0, // 눈덩이 크기 = 지금까지 먹은 눈의 합
-    moves: 0,
-    eaten: 0, // 지나간 칸 수 = 맨바닥이 된 칸 수
-    처음눈: 눈총합(cells),
+  return {
+    tune, ox, oy, or, okind, n,
+    처음개수: n,
+    x: bx, y: by, r: tune.R0,
+    time: tune.TIME,
+    eaten: 0,
+    먹은넓이: 0,     // 불변식 검사용 — r² = R0² + GAIN·먹은넓이 여야 한다
+    fx: 0, fy: 1,    // 마지막으로 향한 쪽. 캐릭터를 뒤에 세우는 데만 쓴다
     over: false,
+    cleared: false,
   };
-
-  if (pos < 0) {
-    // 눈이 한 칸도 없는 판. 판으로 성립하지 않으므로 바로 끝낸다.
-    game.pos = 0;
-    game.over = true;
-    return game;
-  }
-
-  // 시작 칸의 눈을 한 겹 먹고 시작한다
-  cells[pos] -= 한번에먹는양;
-  game.ball = 한번에먹는양;
-  game.eaten = 1;
-  game.over = 막혔나(game, tune);
-  return game;
 }
 
-/** 한 수. 성공하면 판을 제자리에서 고친다 */
-function 굴리기(game, dir, tune = TUNE) {
-  if (game.over) return { ok: false, why: "판이 끝났습니다" };
+/**
+ * 한 스텝(STEP 초) 진행한다.
+ * @param dx,dy 가고 싶은 방향. 길이 0~1 이며 길이가 곧 세기다. 1을 넘으면 잘라 쓴다.
+ */
+function step(g, dx, dy) {
+  if (g.over) return;
+  const t = g.tune;
 
-  // 기동력은 **수를 시작할 때의 크기**로 정한다. 굴러가는 도중에 커져도 그 수 안에서는 바뀌지 않는다.
-  const reach = 기동력(game.ball, tune);
-  const n = 굴릴칸수(game.cells, game.size, game.pos, dir, reach);
-  if (n === 0) return { ok: false, why: "그 방향으로는 굴러가지 않습니다" };
-
-  const [dr, dc] = 이동[dir];
-  let r = (game.pos / game.size) | 0;
-  let c = game.pos % game.size;
-  let 먹은눈 = 0;
-  for (let k = 0; k < n; k++) {
-    r += dr;
-    c += dc;
-    const i = r * game.size + c;
-    game.cells[i] -= 한번에먹는양;
-    먹은눈 += 한번에먹는양;
-    game.eaten++;
+  const len = Math.hypot(dx, dy);
+  if (len > 1e-6) {
+    g.fx = dx / len; g.fy = dy / len;          // 방향(길이 1)
+    const 세기 = Math.min(1, len);             // 살짝 끌면 살살 간다
+    const v = 속도(g.r, t) * STEP * 세기;
+    g.x += g.fx * v;
+    g.y += g.fy * v;
+    g.x = Math.min(t.W - g.r, Math.max(g.r, g.x));
+    g.y = Math.min(t.H - g.r, Math.max(g.r, g.y));
   }
 
-  game.pos = r * game.size + c;
-  game.ball += 먹은눈;
-  game.moves++;
-  if (막혔나(game, tune)) game.over = true;
+  // 닿은 것을 처리한다. 먹으면 커져서 옆의 것도 먹히고, 밀려나면 다른 것에 닿을 수 있어
+  // 더 바뀌지 않을 때까지 몇 번 돈다. 닿은 게 없으면 한 바퀴에 끝난다.
+  let 안끝남 = false;
+  for (let pass = 0; pass < 6; pass++) {
+    let 다시 = false;
+    for (let i = 0; i < g.n; i++) {
+      const ddx = g.x - g.ox[i], ddy = g.y - g.oy[i];
+      const 합 = g.r + g.or[i];
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 >= 합 * 합) continue;
 
-  return { ok: true, 칸수: n, 먹은눈, reach };
-}
-
-/** 지금 둘 수 있는 방향과 각각 몇 칸인지 — 화면의 안내와 봇 정책이 함께 쓴다 */
-function 갈수있는곳(game, tune = TUNE) {
-  const reach = 기동력(game.ball, tune);
-  const out = [];
-  for (const d of DIRS) {
-    const n = 굴릴칸수(game.cells, game.size, game.pos, d, reach);
-    if (n > 0) out.push({ dir: d, 칸수: n });
+      if (g.or[i] <= g.r * t.EAT) {
+        먹는다(g, i, t);
+        i -= 1; // 자리를 넘겨받은 것도 검사해야 한다
+      } else {
+        // 못 먹는 것은 벽이다. 닿은 만큼 밀려난다.
+        const d = Math.sqrt(d2);
+        if (d < 1e-9) { g.x = g.ox[i] + 합; }
+        else { g.x = g.ox[i] + ddx / d * 합; g.y = g.oy[i] + ddy / d * 합; }
+      }
+      다시 = true;
+    }
+    안끝남 = 다시;
+    if (!다시) break;
+    g.x = Math.min(t.W - g.r, Math.max(g.r, g.x));
+    g.y = Math.min(t.H - g.r, Math.max(g.r, g.y));
   }
-  return out;
+
+  // 🔴 큰 것 둘 사이에 끼면 밀려나는 자리가 오락가락해 위 반복이 상한에서 끝난다.
+  //    그때 **먹을 수 있는 것이 겹친 채 남는다** — 10만 판에 2건 실측(2026-08-05).
+  //    낮은 번호로 밀려 들어가면 그 바퀴에서는 다시 안 보기 때문이다.
+  //    상한에 걸렸을 때만 먹기를 따로 훑는다. 먹을 때마다 개수가 줄어 반드시 끝난다.
+  if (안끝남) {
+    for (let 또 = true; 또; ) {
+      또 = false;
+      for (let i = 0; i < g.n; i++) {
+        const ddx = g.x - g.ox[i], ddy = g.y - g.oy[i];
+        const 합 = g.r + g.or[i];
+        if (ddx * ddx + ddy * ddy >= 합 * 합) continue;
+        if (g.or[i] > g.r * t.EAT) continue;
+        먹는다(g, i, t);
+        i -= 1;
+        또 = true; // 커졌으니 아까 못 먹던 것도 먹힐 수 있다
+      }
+    }
+    // 🔴 먹으면 반지름이 커지므로 판 경계를 **다시** 재야 한다.
+    //    이걸 빠뜨려 벽을 뚫는 버그를 한 번 만들었다(10만 판에 10건, 2026-08-05).
+    g.x = Math.min(t.W - g.r, Math.max(g.r, g.x));
+    g.y = Math.min(t.H - g.r, Math.max(g.r, g.y));
+  }
+
+  g.time -= STEP;
+  if (g.time <= 0) { g.time = 0; g.over = true; }
+  if (g.n === 0) { g.over = true; g.cleared = true; }
 }
+
+/** 하나를 먹고 자리에서 지운다. 넓이로 더하므로 커질수록 성장이 둔해진다. */
+function 먹는다(g, i, t) {
+  g.먹은넓이 += g.or[i] * g.or[i];
+  g.r = Math.sqrt(g.r * g.r + t.GAIN * g.or[i] * g.or[i]);
+  g.eaten += 1;
+  g.n -= 1;
+  const n = g.n;
+  g.ox[i] = g.ox[n]; g.oy[i] = g.oy[n]; g.or[i] = g.or[n]; g.okind[i] = g.okind[n];
+}
+
+{ STEP };
 
 // 「눈굴리기」 영구 스킬 — 판을 넘어 쌓인다. 화면을 전혀 모른다
 
-// 🔴 「눈삽」이 주력이다 — 이 게임의 유일한 압력(커지면 못 움직인다)을 정면으로 되민다.
+// 🔴 「눈뭉치」가 주력이다 — 시작 크기가 크면 큰 것을 일찍 먹어 판이 빨리 열린다.
 //    나머지 둘은 판을 넉넉하게 만들 뿐이라 값을 낮게 잡았다.
-//    ⚠️ 아래 비용·효과는 **첫 시뮬레이션 전의 출발값**이다. 100만 판 실측으로 다시 정한다(LESSONS 1.3).
+//    ⚠️ 비용·효과는 **첫 시뮬레이션 전의 출발값**이다. 실측으로 다시 정한다(LESSONS 1.3).
 const SKILLS = [
   {
-    id: "shovel",
-    name: "눈삽",
-    icon: "🥄",
+    id: "seed",
+    name: "눈뭉치",
+    icon: "⚪",
     max: 5,
-    설명: (lv) => (lv === 0 ? "기동력 그대로" : `한 수에 ${lv}칸 더 굴러갑니다`),
+    설명: (lv) => (lv === 0 ? "시작 크기 그대로" : `시작 크기 +${(lv * 0.3).toFixed(1)}`),
   },
   {
-    id: "packed",
-    name: "다진 눈",
-    icon: "❄️",
-    max: 3,
-    설명: (lv) => (lv === 0 ? "눈 깊이 그대로" : `눈이 최대 ${lv}만큼 더 깊이 쌓입니다`),
+    id: "arm",
+    name: "튼튼한 팔",
+    icon: "💪",
+    max: 5,
+    설명: (lv) => (lv === 0 ? "미는 속도 그대로" : `미는 속도 +${lv * 2}`),
   },
   {
-    id: "path",
-    name: "길트기",
-    icon: "🪨",
+    id: "day",
+    name: "긴 하루",
+    icon: "⏳",
     max: 4,
-    설명: (lv) => (lv === 0 ? "바위 그대로" : `바위가 ${lv * 15}% 가량 줄어듭니다`),
+    설명: (lv) => (lv === 0 ? "시간 그대로" : `제한 시간 +${lv * 8}초`),
   },
 ];
 
@@ -506,7 +481,7 @@ function 스킬비용(id, lv) {
   const s = 스킬찾기(id);
   if (!s || lv >= s.max) return null;
   // 단계마다 값이 가파르게 오른다 — 한 스킬만 끝까지 올리는 것을 막는다
-  const 기본 = { shovel: 500, packed: 300, path: 250 }[id] || 300;
+  const 기본 = { seed: 25, arm: 18, day: 30 }[id] || 25;
   return 기본 * (lv + 1);
 }
 
@@ -532,37 +507,38 @@ function 스킬사기(record, id) {
   return { ok: true, level: lv + 1 };
 }
 
-/** 🔴 판을 시작할 때 조율표를 한 번 굳힌다 — 판 도중에 규칙값이 바뀌지 않게(LESSONS 3.3의 취지).
- *  규칙 함수(board.js)는 이 결과만 받으므로 스킬의 존재를 몰라도 된다. */
+/** 🔴 판을 시작할 때 조율표를 한 번 굳힌다 — 판 도중에 규칙값이 바뀌지 않게(LESSONS 3.3).
+ *  규칙 함수(world.js)는 이 결과만 받으므로 스킬의 존재를 몰라도 된다. */
 function 판조율(record, tune = TUNE) {
-  const shovel = 스킬레벨(record, "shovel");
-  const packed = 스킬레벨(record, "packed");
-  const path = 스킬레벨(record, "path");
   return {
     ...tune,
-    REACH_BASE: tune.REACH_BASE + shovel,
-    DEPTH_MAX: tune.DEPTH_MAX + packed,
-    ROCK_RATE: Math.max(0, tune.ROCK_RATE * (1 - 0.15 * path)),
+    R0: tune.R0 + 0.3 * 스킬레벨(record, "seed"),
+    SPEED: tune.SPEED + 2 * 스킬레벨(record, "arm"),
+    TIME: tune.TIME + 8 * 스킬레벨(record, "day"),
   };
 }
 
 // 「눈굴리기」 판을 넘어 남는 것 — 기록·조각·스킬. 화면을 전혀 모른다
 
 
-const 저장키 = "snowball.v1";
+
+// 🔴 v1 은 턴제 퍼즐이던 시절의 저장본이다. 점수 자릿수가 달라(예전 40 ↔ 지금 120)
+//    그대로 읽으면 최고 기록이 엉뚱하게 낮게 나온다. 키를 올려 갈라 둔다.
+const 저장키 = "snowball.v2";
 
 function newRecord() {
   const skills = {};
   for (const s of SKILLS) skills[s.id] = 0;
-  return { parts: 0, best: 0, plays: 0, bestMoves: 0, skills };
+  return { parts: 0, best: 0, plays: 0, bestEaten: 0, skills };
 }
 
 /** 판이 끝났을 때 기록을 갱신한다. 얻은 조각 수를 돌려준다. */
 function 기록반영(record, game, tune = TUNE) {
   record.plays += 1;
-  if (game.ball > record.best) record.best = game.ball;
-  if (game.moves > record.bestMoves) record.bestMoves = game.moves;
-  const 조각 = Math.floor(game.ball * tune.PARTS_RATE);
+  const 점 = 점수(game);
+  if (점 > record.best) record.best = 점;
+  if (game.eaten > record.bestEaten) record.bestEaten = game.eaten;
+  const 조각 = Math.floor(점 * tune.PARTS_RATE);
   record.parts += 조각;
   return 조각;
 }
@@ -583,7 +559,7 @@ function 저장본읽기(raw) {
   r.parts = 정수(s.parts, 0);
   r.best = 정수(s.best, 0);
   r.plays = 정수(s.plays, 0);
-  r.bestMoves = 정수(s.bestMoves, 0);
+  r.bestEaten = 정수(s.bestEaten, 0);
   if (s.skills && typeof s.skills === "object" && !Array.isArray(s.skills)) {
     for (const sk of SKILLS) r.skills[sk.id] = Math.min(sk.max, 정수(s.skills[sk.id], 0));
   }
@@ -611,247 +587,312 @@ function 불러오기() {
 
 
 
-// 🔴 칸은 **한 번만 만들고 내용만 갈아 끼운다**(LESSONS 2.3).
-//    매번 다시 만들면 누르려던 순간 대상이 옮겨 가고, 애니메이션도 끊긴다.
-function 판만들기(el, size) {
-  el.style.setProperty("--n", size);
-  el.textContent = "";
-  const 조각 = document.createDocumentFragment();
-  for (let i = 0; i < size * size; i++) {
-    const d = document.createElement("div");
-    d.className = "cell";
-    조각.appendChild(d);
-  }
-  el.appendChild(조각);
+const 들판색 = "#c7d9ea";
+const 눈덩이색 = "#ffffff";
+const 테두리색 = "#6ec8ff";
+
+function 화면잡기() {
+  const id = (x) => document.getElementById(x);
+  return {
+    stage: id("stage"), ctrl: id("ctrl"),
+    size: id("size"), best: id("best"), eaten: id("eaten"), parts: id("parts"),
+    next: id("next"), timefill: id("timefill"), toast: id("toast"),
+    over: id("over"), overTitle: id("over-title"), overText: id("over-text"),
+    again: id("again"), restart: id("restart"), skills: id("skills"),
+  };
 }
 
-function 판그리기(el, game) {
-  const 칸들 = el.children;
-  for (let i = 0; i < game.cells.length; i++) {
-    const v = game.cells[i];
-    const 눈덩이 = i === game.pos;
-    // 깊이를 색이 아니라 **숫자로도** 준다 — 색 하나로 단계를 구분하면 6~8개에서 무너진다(LESSONS 2.8)
-    const 클래스 =
-      "cell" +
-      (v === 바위 ? " rock" : v === 맨바닥 ? " bare" : ` snow d${Math.min(v, 5)}`) +
-      (눈덩이 ? " ball" : "");
-    const 칸 = 칸들[i];
-    if (칸.className !== 클래스) 칸.className = 클래스;
-    const 글 = v > 0 ? String(v) : "";
-    if (칸.textContent !== 글) 칸.textContent = 글;
-  }
+// 눈덩이가 구르는 각도. 규칙이 아니라 보기용이라 이 파일에만 둔다.
+let 구른각 = 0, 앞x = null, 앞y = null;
+
+function 화면초기화() {
+  구른각 = 0; 앞x = null; 앞y = null;
 }
 
-function 현황그리기(els, game, record, tune = TUNE) {
-  els.ball.textContent = game.ball.toLocaleString("ko-KR");
-  // 「최고」는 판이 끝나야 저장되지만 표시는 지금 크기가 넘어선 순간 바로 올린다.
-  // 안 그러면 첫 판 내내 「최고 0」이 떠 고장처럼 보인다(「2048」에서 겪은 것).
-  els.best.textContent = Math.max(record.best, game.ball).toLocaleString("ko-KR");
-  els.moves.textContent = `${game.moves.toLocaleString("ko-KR")}수`;
-
-  // 기동력은 이 게임의 심장이라 늘 눈에 보이게 둔다
-  const reach = 기동력(game.ball, tune);
-  els.reach.textContent = `${reach}칸`;
-  els.reach.classList.toggle("low", reach <= 2);
-  els.parts.textContent = `◈ ${record.parts.toLocaleString("ko-KR")}`;
+/** 캔버스 뒤 버퍼를 화면 크기에 맞춘다. 크기가 그대로면 아무것도 하지 않는다. */
+function 버퍼맞추기(cv) {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const w = Math.max(1, Math.round(cv.clientWidth * dpr));
+  const h = Math.max(1, Math.round(cv.clientHeight * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
 }
 
-/** 어느 쪽으로 몇 칸 갈 수 있는지 화살표에 적어 준다 — 머리로 세지 않아도 되게 */
-function 방향그리기(els, game, tune = TUNE) {
-  const 갈곳 = new Map(갈수있는곳(game, tune).map((g) => [g.dir, g.칸수]));
-  for (const [dir, el] of Object.entries(els.arrows)) {
-    const n = 갈곳.get(dir) || 0;
-    el.textContent = n ? String(n) : "";
-    // 🔴 막힌 방향은 disabled 가 아니라 aria-disabled 로 둔다.
-    //    disabled 면 눌린 표시조차 없어 "터치가 안 먹었다"고 느낀다(LESSONS 2.6).
-    el.setAttribute("aria-disabled", n ? "false" : "true");
-  }
+/** 논리 좌표 → 캔버스 좌표. 판 전체가 늘 화면에 들어가게 여백을 두고 가운데 맞춘다. */
+function 자(cv, tune) {
+  const s = Math.min(cv.width / tune.W, cv.height / tune.H);
+  return { s, ox: (cv.width - tune.W * s) / 2, oy: (cv.height - tune.H * s) / 2 };
 }
 
-let 알림타이머 = null;
-function toast(el, 글, 좋음 = false) {
-  el.textContent = 글;
-  el.className = "toast show" + (좋음 ? " good" : "");
-  clearTimeout(알림타이머);
-  알림타이머 = setTimeout(() => {
-    el.className = "toast";
-  }, 1600);
-}
+function 그리기(cv, g) {
+  버퍼맞추기(cv);
+  const ctx = cv.getContext("2d");
+  const t = g.tune;
+  const { s, ox, oy } = 자(cv, t);
 
-function 공방그리기(el, record) {
-  if (!el.children.length) {
-    for (const s of SKILLS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "shop";
-      b.dataset.id = s.id;
-      b.innerHTML =
-        `<span class="shop-icon" aria-hidden="true">${s.icon}</span>` +
-        `<span class="shop-name"></span><span class="shop-sub"></span>`;
-      el.appendChild(b);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const X = (x) => ox + x * s, Y = (y) => oy + y * s;
+
+  // 눈밭
+  ctx.fillStyle = 들판색;
+  둥근네모(ctx, ox, oy, t.W * s, t.H * s, 10 * (s / 4));
+  ctx.fill();
+
+  // 바닥의 것들 — 먹을 수 있는 것에만 흰 테를 둘러 한눈에 갈리게 한다
+  for (let i = 0; i < g.n; i++) {
+    const k = KINDS[g.okind[i]];
+    const cx = X(g.ox[i]), cy = Y(g.oy[i]), r = g.or[i] * s;
+    if (먹을수있나(g.r, g.or[i], t)) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 1.38, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,.5)";
+      ctx.fill();
     }
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = k.color;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, r * 0.16);
+    ctx.strokeStyle = k.edge;
+    ctx.stroke();
   }
-  for (const b of el.children) {
-    const s = SKILLS.find((x) => x.id === b.dataset.id);
+
+  // 캐릭터 — 눈덩이 뒤에 선다. 규칙에는 없고 보기용이다.
+  const bx = X(g.x), by = Y(g.y), br = g.r * s;
+  const 뒤 = (g.r + 1.7) * s;
+  const px = bx - g.fx * 뒤, py = by - g.fy * 뒤;
+  ctx.beginPath();
+  ctx.arc(px, py, 1.25 * s, 0, Math.PI * 2);
+  ctx.fillStyle = "#25406b";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(px + g.fx * 0.45 * s, py + g.fy * 0.45 * s, 0.6 * s, 0, Math.PI * 2);
+  ctx.fillStyle = "#f0d3ad";
+  ctx.fill();
+
+  // 눈덩이
+  if (앞x !== null) 구른각 += Math.hypot(g.x - 앞x, g.y - 앞y) / Math.max(0.5, g.r);
+  앞x = g.x; 앞y = g.y;
+
+  ctx.beginPath();
+  ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.fillStyle = 눈덩이색;
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, br * 0.1);
+  ctx.strokeStyle = 테두리색;
+  ctx.stroke();
+
+  // 구르는 것이 보이도록 무늬를 돌린다
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(110,200,255,.55)";
+  ctx.lineWidth = Math.max(1, br * 0.09);
+  for (let i = 0; i < 3; i++) {
+    const a = 구른각 + (i * Math.PI * 2) / 3;
+    ctx.beginPath();
+    ctx.arc(bx + Math.cos(a) * br * 0.55, by + Math.sin(a) * br * 0.55, br * 0.3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function 둥근네모(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function 현황갱신(els, g, record) {
+  const 점 = 점수(g);
+  els.size.textContent = 점.toLocaleString("ko-KR");
+  // 진행 중인 판이 최고 기록을 넘으면 그 자리에서 보여 준다 — 판이 끝나야 아는 것은 답답하다
+  els.best.textContent = Math.max(record.best, 점).toLocaleString("ko-KR");
+  els.eaten.textContent = `${g.eaten}개`;
+  els.parts.textContent = `◈ ${record.parts.toLocaleString("ko-KR")}`;
+  const 남 = Math.max(0, g.time) / g.tune.TIME;
+  els.timefill.style.width = `${(남 * 100).toFixed(1)}%`;
+  els.timefill.classList.toggle("low", g.time <= 15);
+  const 다음 = 다음목표(g);
+  els.next.textContent = 다음 ? 다음.name : "다 먹음";
+}
+
+function 공방그리기(els, record, 누름) {
+  els.skills.innerHTML = "";
+  for (const s of SKILLS) {
     const lv = 스킬레벨(record, s.id);
     const cost = 스킬비용(s.id, lv);
-    b.querySelector(".shop-name").textContent = `${s.name} ${lv}`;
-    b.querySelector(".shop-sub").textContent = cost === null ? "최고" : `◈ ${cost}`;
-    b.classList.toggle("has", cost !== null && record.parts >= cost);
-    b.classList.toggle("maxed", cost === null);
-    b.setAttribute(
-      "aria-label",
-      `${s.name} ${lv}단계. ${s.설명(lv)}` +
-        (cost === null ? ". 최고 단계입니다" : `. 올리면 ${s.설명(lv + 1)}, 조각 ${cost}개`),
-    );
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "shop" + (lv > 0 ? " has" : "") + (cost === null ? " maxed" : "");
+    // 못 사는 버튼도 눌러서 이유를 들을 수 있어야 한다 — disabled 대신 aria-disabled
+    b.setAttribute("aria-disabled", String(cost !== null && record.parts < cost));
+    b.innerHTML =
+      `<span class="shop-icon">${s.icon}</span>` +
+      `<span class="shop-name">${s.name}${lv ? ` <b>${lv}</b>` : ""}</span>` +
+      `<span class="shop-sub">${cost === null ? "최고" : `◈${cost}`}</span>`;
+    b.title = s.설명(lv);
+    b.addEventListener("click", () => 누름(s.id));
+    els.skills.appendChild(b);
   }
 }
 
-function 끝화면(els, game, record, 조각) {
-  els.overTitle.textContent = "더 굴릴 수 없습니다";
+let 알림타이머 = 0;
+function 알림(els, 글, 좋음 = false) {
+  els.toast.textContent = 글;
+  els.toast.classList.toggle("good", !!좋음);
+  els.toast.classList.add("show");
+  clearTimeout(알림타이머);
+  알림타이머 = setTimeout(() => els.toast.classList.remove("show"), 1600);
+}
+
+function 끝화면(els, g, 조각) {
+  els.overTitle.textContent = g.cleared ? "다 먹었습니다" : "시간 종료";
   els.overText.innerHTML =
-    `눈덩이 <strong>${game.ball.toLocaleString("ko-KR")}</strong> · ${game.moves.toLocaleString("ko-KR")}수` +
-    `<br>조각 <strong>${조각.toLocaleString("ko-KR")}</strong>개를 얻었습니다` +
-    (game.ball >= record.best && game.ball > 0 ? "<br><em>새 기록입니다</em>" : "");
+    `크기 <em>${점수(g).toLocaleString("ko-KR")}</em> · ${g.eaten}개 흡수<br>조각 <em>◈${조각}</em> 얻음`;
   els.over.hidden = false;
 }
 
-// 「눈굴리기」 화면과 규칙을 잇는다 — 규칙은 board.js, 그리기는 ui.js 가 맡는다
+// 「눈굴리기」 입력과 판 진행 — 규칙은 world.js, 그리기는 ui.js 가 맡는다
 
 
 
 
 
-const els = {
-  board: document.getElementById("board"),
-  ball: document.getElementById("ball"),
-  best: document.getElementById("best"),
-  moves: document.getElementById("moves"),
-  reach: document.getElementById("reach"),
-  parts: document.getElementById("parts"),
-  toast: document.getElementById("toast"),
-  over: document.getElementById("over"),
-  overTitle: document.getElementById("over-title"),
-  overText: document.getElementById("over-text"),
-  again: document.getElementById("again"),
-  restart: document.getElementById("restart"),
-  skills: document.getElementById("skills"),
-  pad: document.querySelector(".pad"),
-  arrows: {
-    up: document.getElementById("n-up"),
-    down: document.getElementById("n-down"),
-    left: document.getElementById("n-left"),
-    right: document.getElementById("n-right"),
-  },
-};
-
+const els = 화면잡기();
 let record = 불러오기();
-let 판튠 = TUNE;
 let game = null;
 
+let 입력x = 0, 입력y = 0;
+let 끌기 = null;              // {id, x, y} — 누르기 시작한 자리
+let 쌓인시간 = 0, 앞시각 = 0;
+const 눌린키 = new Set();
+
+const 죽은거리 = 4;           // 이보다 짧게 끌면 손 떨림으로 본다(화면 픽셀)
+const 최대끌기 = 46;          // 이만큼 끌면 최고 속도
+
 function 새판() {
-  // 🔴 조율표를 판 시작 시 한 번 굳힌다 — 판 도중에 스킬이 반영돼 판이 뒤틀리지 않게
-  판튠 = 판조율(record, TUNE);
-  game = newGame(판튠);
-  판만들기(els.board, game.size);
+  game = newGame(판조율(record));
+  화면초기화();
+  입력x = 입력y = 0;
+  끌기 = null;
+  쌓인시간 = 0;
   els.over.hidden = true;
-  그리기();
-  if (game.over) 끝내기(); // 원리상 드물지만 시작하자마자 막힌 판이 있을 수 있다
+  공방그리기(els, record, 스킬누름);
+  현황갱신(els, game, record);
 }
 
-function 그리기() {
-  판그리기(els.board, game);
-  현황그리기(els, game, record, 판튠);
-  방향그리기(els, game, 판튠);
-  공방그리기(els.skills, record);
-}
-
-function 끝내기() {
-  const 조각 = 기록반영(record, game, 판튠);
+function 판끝() {
+  const 조각 = 기록반영(record, game, game.tune);
   저장(record);
-  그리기();
-  끝화면(els, game, record, 조각);
+  공방그리기(els, record, 스킬누름);
+  끝화면(els, game, 조각);
+  입력x = 입력y = 0;
+  끌기 = null;
 }
 
-function 움직이기(dir) {
+function 스킬누름(id) {
+  if (game && !game.over) { 알림(els, "판이 끝난 뒤에 올릴 수 있습니다"); return; }
+  const r = 스킬사기(record, id);
+  if (!r.ok) { 알림(els, r.why); return; }
+  저장(record);
+  공방그리기(els, record, 스킬누름);
+  알림(els, `${스킬찾기(id).name} ${r.level}단계`, true);
+}
+
+// ── 판 진행 ─────────────────────────────────────────────
+// 🔴 화면 주사율이 얼마든 규칙은 STEP 간격으로만 돈다. 그래야 화면 없이 돌린 결과와 같다.
+function 프레임(now) {
+  requestAnimationFrame(프레임);
+  if (!앞시각) 앞시각 = now;
+  let dt = (now - 앞시각) / 1000;
+  앞시각 = now;
+  if (dt > 0.25) dt = 0.25; // 다른 탭에 갔다 돌아왔을 때 몇 분 치를 몰아 돌지 않게
+
+  if (game && !game.over) {
+    쌓인시간 += dt;
+    let 횟수 = 0;
+    while (쌓인시간 >= STEP && 횟수 < 8) {
+      step(game, 입력x, 입력y);
+      쌓인시간 -= STEP;
+      횟수 += 1;
+      if (game.over) break;
+    }
+    if (횟수 >= 8) 쌓인시간 = 0; // 따라잡지 못하면 밀린 것을 버린다
+    현황갱신(els, game, record);
+    if (game.over) 판끝();
+  }
+  if (game) 그리기(els.stage, game);
+}
+
+// ── 입력: 누른 채 끌기 ───────────────────────────────────
+els.ctrl.addEventListener("pointerdown", (e) => {
   if (!game || game.over) return;
-  const r = 굴리기(game, dir, 판튠);
-  if (!r.ok) return toast(els.toast, r.why);
-  그리기();
-  if (game.over) 끝내기();
+  if (e.target.closest("button")) return;
+  끌기 = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  입력x = 입력y = 0;
+  try { els.ctrl.setPointerCapture(e.pointerId); } catch { /* 캡처가 막혀도 조작은 된다 */ }
+  e.preventDefault();
+});
+
+els.ctrl.addEventListener("pointermove", (e) => {
+  if (!끌기 || e.pointerId !== 끌기.id) return;
+  const dx = e.clientX - 끌기.x, dy = e.clientY - 끌기.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 죽은거리) { 입력x = 입력y = 0; return; }
+  const 세기 = Math.min(1, d / 최대끌기);
+  입력x = (dx / d) * 세기;
+  입력y = (dy / d) * 세기;
+});
+
+const 손뗌 = (e) => {
+  if (!끌기 || e.pointerId !== 끌기.id) return;
+  끌기 = null;
+  입력x = 입력y = 0;
+};
+els.ctrl.addEventListener("pointerup", 손뗌);
+els.ctrl.addEventListener("pointercancel", 손뗌);
+
+// ── 입력: 키보드(PC) ────────────────────────────────────
+const 키방향 = {
+  ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+  W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+};
+
+function 키로입력() {
+  if (끌기) return; // 끌기가 우선이다
+  let x = 0, y = 0;
+  for (const k of 눌린키) { const v = 키방향[k]; if (v) { x += v[0]; y += v[1]; } }
+  const d = Math.hypot(x, y);
+  입력x = d ? x / d : 0;
+  입력y = d ? y / d : 0;
 }
 
-// ── 조작 ──────────────────────────────────────────────
-// 판 위에서 쓸기
-const 최소거리 = 22; // 이만큼 움직여야 쓸기로 본다. 더 짧으면 탭이 방향으로 오인된다
-let 시작 = null;
-let 잠금 = false;
-
-els.board.addEventListener("pointerdown", (e) => {
-  시작 = { x: e.clientX, y: e.clientY };
-  잠금 = false;
-});
-els.board.addEventListener("pointermove", (e) => {
-  if (!시작 || 잠금) return;
-  const dx = e.clientX - 시작.x;
-  const dy = e.clientY - 시작.y;
-  if (Math.abs(dx) < 최소거리 && Math.abs(dy) < 최소거리) return;
-  // 손을 뗄 때가 아니라 **방향이 분명해지는 순간** 처리한다.
-  // 한 번 처리한 뒤에는 손을 뗄 때까지 잠가 한 번의 쓸기가 두 수로 새지 않게 한다.
-  잠금 = true;
-  움직이기(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
-});
-const 쓸기끝 = () => {
-  시작 = null;
-  잠금 = false;
-};
-els.board.addEventListener("pointerup", 쓸기끝);
-els.board.addEventListener("pointercancel", 쓸기끝);
-els.board.addEventListener("pointerleave", 쓸기끝);
-
-// 방향 패드 — 닿는 순간 처리한다(손을 뗄 때 처리하면 한 박자 늦게 느껴진다)
-els.pad.addEventListener("pointerdown", (e) => {
-  const b = e.target.closest(".dirbtn");
-  if (!b) return;
+addEventListener("keydown", (e) => {
+  if (!키방향[e.key]) return;
   e.preventDefault();
-  움직이기(b.dataset.dir);
+  눌린키.add(e.key);
+  키로입력();
 });
-// 키보드로도 누를 수 있어야 한다. e.detail === 0 일 때만 받아 두 번 처리되는 것을 막는다
-els.pad.addEventListener("click", (e) => {
-  if (e.detail !== 0) return;
-  const b = e.target.closest(".dirbtn");
-  if (b) 움직이기(b.dataset.dir);
+addEventListener("keyup", (e) => {
+  if (!키방향[e.key]) return;
+  눌린키.delete(e.key);
+  키로입력();
 });
+// 창을 벗어나면 키가 눌린 채로 남는다 — 붙잡고 있던 방향으로 계속 굴러가 버린다
+addEventListener("blur", () => { 눌린키.clear(); 입력x = 입력y = 0; });
 
-const 키맵 = {
-  ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
-  a: "left", d: "right", w: "up", s: "down",
-  A: "left", D: "right", W: "up", S: "down",
-};
-window.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
-  const dir = 키맵[e.key];
-  if (!dir) return;
-  e.preventDefault(); // 방향키로 화면이 스크롤되는 것을 막는다
-  움직이기(dir);
-});
-
-// ── 버튼 ──────────────────────────────────────────────
-els.again.addEventListener("click", 새판);
 els.restart.addEventListener("click", 새판);
-
-els.skills.addEventListener("click", (e) => {
-  const b = e.target.closest(".shop");
-  if (!b) return;
-  if (game && !game.over) return toast(els.toast, "판이 끝난 뒤에 올릴 수 있습니다");
-  const r = 스킬사기(record, b.dataset.id);
-  if (!r.ok) return toast(els.toast, r.why);
-  저장(record);
-  그리기();
-  toast(els.toast, `${스킬찾기(b.dataset.id).name} ${r.level}단계 — 다음 판부터 적용됩니다`, true);
-});
+els.again.addEventListener("click", 새판);
 
 새판();
+requestAnimationFrame(프레임);
 </script>
 </body>
 </html>
